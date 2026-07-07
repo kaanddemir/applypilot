@@ -6,7 +6,7 @@
 
 <div align="center">
 
-**A local-first job application tracker with AI-assisted CV review, cover-letter drafting, and focused job-search chat.**
+**A job application tracker with AI-assisted CV review, cover-letter drafting, and focused job-search chat.**
 
 </div>
 
