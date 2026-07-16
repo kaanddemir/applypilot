@@ -18,22 +18,42 @@ export function esc(s) {
 
 export function normalizeApps(items) {
   if (!Array.isArray(items)) return [];
-  return items.map((a) => ({
-    id: a.id || uid(),
-    company: a.company || "",
-    role: a.role || "",
-    jobUrl: a.jobUrl || "",
-    source: a.source || "",
-    status: STATUSES.includes(a.status) ? a.status : "Saved",
-    appliedAt: a.appliedAt || "",
-    nextAction: a.nextAction || "",
-    notes: a.notes || "",
-    jobText: a.jobText || "",
-    matchAnalysis: a.matchAnalysis || null,
-    coverLetter: a.coverLetter || "",
-    createdAt: a.createdAt || Date.now(),
-    updatedAt: a.updatedAt || Date.now(),
-  }));
+  return items.map((a) => {
+    const legacyUrls = Array.isArray(a.jobUrls) && a.jobUrls.length ? a.jobUrls : [a.jobUrl];
+    const legacySources = Array.isArray(a.sources) ? a.sources : [];
+    const jobSources = (Array.isArray(a.jobSources) ? a.jobSources : legacyUrls.map((url, index) => ({
+      url,
+      source: legacySources[index] || (index === 0 ? a.source : ""),
+    })))
+      .map((entry) => ({
+        url: String(entry?.url || "").trim(),
+        source: String(entry?.source || "").trim(),
+      }))
+      .filter((entry) => entry.url || entry.source);
+    const jobUrls = jobSources.map((entry) => entry.url).filter(Boolean);
+    const sources = jobSources.map((entry) => entry.source).filter(Boolean);
+    return ({
+      id: a.id || uid(),
+      company: a.company || "",
+      role: a.role || "",
+      // Keep jobUrl as the primary URL for older saved data and features that
+      // fetch/open one posting, while jobUrls stores every source link.
+      jobUrl: jobUrls[0] || "",
+      jobUrls,
+      source: sources[0] || "",
+      sources,
+      jobSources,
+      status: STATUSES.includes(a.status) ? a.status : "Saved",
+      appliedAt: a.appliedAt || "",
+      nextAction: a.nextAction || "",
+      notes: a.notes || "",
+      jobText: a.jobText || "",
+      matchAnalysis: a.matchAnalysis || null,
+      coverLetter: a.coverLetter || "",
+      createdAt: a.createdAt || Date.now(),
+      updatedAt: a.updatedAt || Date.now(),
+    });
+  });
 }
 
 export function normalizeSessions(items) {
@@ -62,6 +82,7 @@ export const state = {
   search: "",
   sortBy: store.get(LS.sortBy, "updated"),
   boardLayout: store.get(LS.boardLayout, "kanban") === "table" ? "table" : "kanban",
+  tablePage: 1,
   chatSessions: [],
   activeChatId: store.get(LS.active, ""),
   streaming: false,
@@ -167,7 +188,7 @@ export function filteredApps() {
   const q = state.search.trim().toLowerCase();
   let list = state.applications.filter((a) => state.filter === "All" || a.status === state.filter);
   if (q) {
-    list = list.filter((a) => [a.company, a.role, a.source, a.notes, a.nextAction].join(" ").toLowerCase().includes(q));
+    list = list.filter((a) => [a.company, a.role, ...(a.sources || []), a.source, a.notes, a.nextAction].join(" ").toLowerCase().includes(q));
   }
   const copy = list.slice();
   copy.sort((a, b) => {

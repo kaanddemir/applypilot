@@ -75,8 +75,12 @@ export function openApplicationWizard(app) {
   const draft = {
     company: app?.company || "",
     role: app?.role || "",
-    jobUrl: app?.jobUrl || "",
-    source: app?.source || "",
+    jobSources: (app?.jobSources?.length
+      ? app.jobSources
+      : (app?.jobUrls?.length ? app.jobUrls : [app?.jobUrl || ""]).map((url, index) => ({
+        url,
+        source: app?.sources?.[index] || (index === 0 ? app?.source || "" : ""),
+      }))).map((entry) => ({ ...entry })),
     status: app?.status || "Saved",
     appliedAt: app?.appliedAt || "",
     notes: app?.notes || "",
@@ -88,7 +92,11 @@ export function openApplicationWizard(app) {
 
   function readStep() {
     if (step === 0) {
-      draft.company = v("f_company"); draft.role = v("f_role"); draft.jobUrl = v("f_jobUrl"); draft.source = v("f_source");
+      draft.company = v("f_company"); draft.role = v("f_role");
+      draft.jobSources = Array.from(document.querySelectorAll(".job-entry-row"), (row) => ({
+        url: row.querySelector(".job-url-input")?.value || "",
+        source: row.querySelector(".job-source-input")?.value || "",
+      }));
       draft.jobText = v("f_jobText");
     } else if (step === 1) {
       draft.status = v("f_status"); draft.appliedAt = v("f_appliedAt"); draft.notes = v("f_notes");
@@ -97,12 +105,21 @@ export function openApplicationWizard(app) {
 
   function body() {
     if (step === 0) {
+      const jobSourceFields = draft.jobSources.map((entry, index) =>
+        '<div class="job-entry-row">' +
+          '<div class="job-url-row"><input class="job-url-input" id="f_jobUrl_' + index + '" data-job-index="' + index + '" type="url" value="' + esc(entry.url) + '" placeholder="https://..." maxlength="' + LIMITS.jobUrl + '" aria-label="Job URL ' + (index + 1) + '" />' +
+            (index === 0
+              ? '<button class="job-url-action add" type="button" id="addJobUrl" aria-label="Add another job URL and source" title="Add another URL and source">' + I.plus + '</button>'
+              : '<button class="job-url-action remove" type="button" data-remove-url="' + index + '" aria-label="Remove job URL and source ' + (index + 1) + '" title="Remove URL and source">' + I.close + '</button>') +
+          '</div>' +
+          '<input class="job-source-input" id="f_source_' + index + '" type="text" value="' + esc(entry.source) + '" placeholder="LinkedIn, company site" maxlength="' + LIMITS.source + '" aria-label="Source ' + (index + 1) + '" />' +
+        '</div>'
+      ).join("");
       return '<div class="wizard-title">Role basics</div><p class="wizard-sub">Company and role are required. You can add everything else later.</p>' +
         '<div class="form-grid">' +
           field("Company", "company", "text", draft.company, "Acme Inc.", LIMITS.company) +
           field("Role", "role", "text", draft.role, "Product Manager", LIMITS.role) +
-          field("Job URL", "jobUrl", "url", draft.jobUrl, "https://...", LIMITS.jobUrl) +
-          field("Source", "source", "text", draft.source, "LinkedIn, company site", LIMITS.source) +
+          '<div class="field full job-source-group"><div class="job-entry-labels"><label>Job URL</label><label>Source</label></div><div class="job-url-list">' + jobSourceFields + '</div></div>' +
           '<div class="field full"><label>Job description <span class="label-opt">(Optional)</span></label>' +
             '<textarea id="f_jobText" maxlength="' + LIMITS.jobText + '" placeholder="Paste the job description for a deeper AI review. Optional, the analysis also uses the company, role, source and notes you enter.">' + esc(draft.jobText) + "</textarea></div>" +
         "</div>";
@@ -123,8 +140,12 @@ export function openApplicationWizard(app) {
         row("Role", draft.role || "—", !draft.role) +
         row("Status", draft.status) +
         row("Applied", draft.appliedAt || "Not set", !draft.appliedAt) +
-        row("Source", draft.source || "Not set", !draft.source) +
-        row("Job URL", draft.jobUrl || "Not set", !draft.jobUrl) +
+        (draft.jobSources.some((entry) => entry.url.trim() || entry.source.trim())
+          ? draft.jobSources.filter((entry) => entry.url.trim() || entry.source.trim()).map((entry, index) =>
+            row("Job URL " + (index + 1), entry.url || "Not set", !entry.url) +
+            row("Source " + (index + 1), entry.source || sourceFromUrl(entry.url) || "Not set", !entry.source && !sourceFromUrl(entry.url))
+          ).join("")
+          : row("Job URL", "Not set", true) + row("Source", "Not set", true)) +
         row("Job description", draft.jobText.trim() ? "Added" : "Not set", !draft.jobText.trim()) +
       "</div>";
   }
@@ -143,8 +164,24 @@ export function openApplicationWizard(app) {
     $("modalClose").addEventListener("click", closeModal);
     $("wizCancel").addEventListener("click", closeModal);
     if (step === 0) {
-      const url = $("f_jobUrl");
-      if (url) url.addEventListener("input", () => { const s = $("f_source"); if (s && !s.value.trim()) s.value = sourceFromUrl(url.value); });
+      document.querySelectorAll(".job-url-input").forEach((urlInput) => urlInput.addEventListener("input", () => {
+        const sourceInput = $("f_source_" + urlInput.dataset.jobIndex);
+        if (sourceInput && !sourceInput.value.trim()) sourceInput.value = sourceFromUrl(urlInput.value);
+      }));
+      const addUrl = $("addJobUrl");
+      if (addUrl) addUrl.addEventListener("click", () => {
+        readStep();
+        draft.jobSources.push({ url: "", source: "" });
+        render();
+        const inputs = document.querySelectorAll(".job-url-input");
+        inputs[inputs.length - 1]?.focus();
+      });
+      document.querySelectorAll("[data-remove-url]").forEach((button) => button.addEventListener("click", () => {
+        readStep();
+        draft.jobSources.splice(Number(button.dataset.removeUrl), 1);
+        if (!draft.jobSources.length) draft.jobSources.push({ url: "", source: "" });
+        render();
+      }));
     }
     const back = $("wizBack");
     if (back) back.addEventListener("click", () => { readStep(); step -= 1; error = ""; render(); });
@@ -165,8 +202,17 @@ export function openApplicationWizard(app) {
     const target = app || { id: uid(), createdAt: Date.now(), matchAnalysis: null, coverLetter: "" };
     target.company = company;
     target.role = role;
-    target.jobUrl = clampText(draft.jobUrl, LIMITS.jobUrl);
-    target.source = clampText(draft.source, LIMITS.source) || sourceFromUrl(target.jobUrl);
+    target.jobSources = draft.jobSources
+      .map((entry) => {
+        const url = clampText(entry.url, LIMITS.jobUrl);
+        return { url, source: clampText(entry.source, LIMITS.source) || sourceFromUrl(url) };
+      })
+      .filter((entry) => entry.url || entry.source)
+      .filter((entry, index, entries) => entries.findIndex((item) => item.url === entry.url && item.source === entry.source) === index);
+    target.jobUrls = target.jobSources.map((entry) => entry.url).filter(Boolean);
+    target.sources = target.jobSources.map((entry) => entry.source).filter(Boolean);
+    target.jobUrl = target.jobUrls[0] || "";
+    target.source = target.sources[0] || sourceFromUrl(target.jobUrl);
     target.status = draft.status;
     target.appliedAt = draft.appliedAt;
     target.nextAction = "";

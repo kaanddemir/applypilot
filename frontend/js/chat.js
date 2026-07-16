@@ -370,8 +370,10 @@ function buildCoverContext(app) {
   const lines = [];
   if (app.company) lines.push("Company: " + app.company);
   if (app.role) lines.push("Role / title: " + app.role);
-  if (app.source) lines.push("Source: " + app.source);
-  if (app.jobUrl) lines.push("Job URL: " + app.jobUrl);
+  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
+  sources.forEach((source, index) => lines.push("Source " + (index + 1) + ": " + source));
+  const jobUrls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
+  jobUrls.forEach((url, index) => lines.push("Job URL " + (index + 1) + ": " + url));
   if (app.notes && app.notes.trim()) lines.push("User notes: " + app.notes.trim());
   const desc = (app.jobText || "").trim();
   lines.push("", "Job description:");

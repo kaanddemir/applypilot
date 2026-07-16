@@ -9,9 +9,11 @@ import {
 import { I } from "./icons.js";
 import { analyze } from "./ai.js";
 import { renderAll } from "./render.js";
-import { openApplicationWizard, openCvWizard, openDeleteModal } from "./wizards.js";
+import { openApplicationWizard, openCvWizard, openDeleteModal } from "./wizards.js?v=3";
 import { runCover } from "./chat.js";
 import { exportExcelTable, readExcelApplications } from "./excel.js";
+
+const TABLE_PAGE_SIZE = 10;
 
 export function renderBoardPage() {
   $("content").innerHTML =
@@ -52,19 +54,31 @@ export function renderBoardPage() {
 
 function wireBoardControls() {
   const searchInput = $("searchInput");
-  if (searchInput) searchInput.addEventListener("input", (e) => { state.search = e.target.value; renderBoard(); });
+  if (searchInput) searchInput.addEventListener("input", (e) => {
+    state.search = e.target.value;
+    state.tablePage = 1;
+    renderBoard();
+  });
   const sf = $("statusFilter");
   if (sf) {
     sf.innerHTML = ['<option value="All">All statuses</option>'].concat(STATUSES.map((s) => '<option value="' + esc(s) + '">' + esc(s) + "</option>")).join("");
     sf.value = state.filter;
-    sf.addEventListener("change", (e) => { state.filter = e.target.value; renderAll(); });
+    sf.addEventListener("change", (e) => {
+      state.filter = e.target.value;
+      state.tablePage = 1;
+      renderAll();
+    });
   }
   const sort = $("sortSelect");
   if (sort) {
     sort.value = state.sortBy;
     sort.disabled = state.boardLayout === "kanban";
     sort.title = state.boardLayout === "kanban" ? "Sorting is available in Table view" : "Sort applications";
-    sort.addEventListener("change", (e) => { state.sortBy = e.target.value; renderBoard(); });
+    sort.addEventListener("change", (e) => {
+      state.sortBy = e.target.value;
+      state.tablePage = 1;
+      renderBoard();
+    });
   }
   const menuBtn = $("dataMenuBtn");
   const menu = $("dataMenu");
@@ -87,6 +101,7 @@ function wireBoardControls() {
   }
   document.querySelectorAll("#layoutToggle .seg-btn").forEach((b) => b.addEventListener("click", () => {
     state.boardLayout = b.dataset.layout;
+    state.tablePage = 1;
     renderAll();
   }));
 }
@@ -95,6 +110,7 @@ async function importExcelFile(file) {
   try {
     const imported = await readExcelApplications(file);
     state.applications = state.applications.concat(imported);
+    state.tablePage = 1;
     persistApps();
     renderAll();
     toast("Imported " + imported.length + " application" + (imported.length === 1 ? "" : "s"));
@@ -185,6 +201,10 @@ function moveApplication(id, status) {
 
 // --- Table (editable grid) view ---
 function renderTable(host, list) {
+  const totalPages = Math.max(1, Math.ceil(list.length / TABLE_PAGE_SIZE));
+  state.tablePage = Math.min(Math.max(state.tablePage, 1), totalPages);
+  const pageStart = (state.tablePage - 1) * TABLE_PAGE_SIZE;
+  const pageApps = list.slice(pageStart, pageStart + TABLE_PAGE_SIZE);
   const cols = [
     ["company", "Company"], ["role", "Role"], ["status", "Status"],
     ["applied", "Applied"], ["ai", "AI"], ["notes", "Notes"], ["edit", ""],
@@ -211,7 +231,7 @@ function renderTable(host, list) {
     return "<th" + (sortable ? ' class="sortable" data-sort="' + sortMap[key] + '"' : "") + ">" + esc(label) + indicator + "</th>";
   }).join("");
 
-  const rows = list.map((app) => {
+  const rows = pageApps.map((app) => {
     const reviewed = !!app.matchAnalysis;
     const statusSel = '<select class="mini-select js-row-status" data-id="' + esc(app.id) + '">' +
       STATUSES.map((s) => '<option value="' + esc(s) + '"' + (s === app.status ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select>";
@@ -226,10 +246,22 @@ function renderTable(host, list) {
     "</tr>";
   }).join("");
 
+  const pagination = list.length > TABLE_PAGE_SIZE
+    ? '<nav class="table-pagination" aria-label="Table pagination">' +
+        '<button class="pagination-btn js-prev-page" type="button" aria-label="Previous page" title="Previous page"' + (state.tablePage === 1 ? " disabled" : "") + '>' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>' +
+        "</button>" +
+        '<span class="pagination-page" aria-live="polite">' + state.tablePage + " / " + totalPages + "</span>" +
+        '<button class="pagination-btn js-next-page" type="button" aria-label="Next page" title="Next page"' + (state.tablePage === totalPages ? " disabled" : "") + '>' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>' +
+        "</button>" +
+      "</nav>"
+    : "";
+
   host.innerHTML =
     '<div class="table-wrap"><table class="app-table"><thead><tr>' + head + "</tr></thead><tbody>" +
     (rows || '<tr><td colspan="7" class="muted table-empty-cell">No applications match your filters.</td></tr>') +
-    "</tbody></table></div>";
+    "</tbody></table></div>" + pagination;
 
   host.querySelectorAll("thead .sortable").forEach((th) => th.addEventListener("click", () => {
     const clickedSort = th.dataset.sort;
@@ -243,6 +275,7 @@ function renderTable(host, list) {
     } else {
       state.sortBy = clickedSort;
     }
+    state.tablePage = 1;
     const sortSelect = $("sortSelect");
     if (sortSelect) {
       sortSelect.value = state.sortBy.endsWith("-desc") || state.sortBy.endsWith("-asc")
@@ -251,6 +284,14 @@ function renderTable(host, list) {
     }
     renderBoard();
   }));
+  host.querySelector(".js-prev-page")?.addEventListener("click", () => {
+    state.tablePage -= 1;
+    renderBoard();
+  });
+  host.querySelector(".js-next-page")?.addEventListener("click", () => {
+    state.tablePage += 1;
+    renderBoard();
+  });
   host.querySelectorAll(".js-row-status").forEach((sel) => {
     sel.addEventListener("click", (e) => e.stopPropagation());
     sel.addEventListener("change", (e) => moveApplication(e.target.dataset.id, e.target.value));
@@ -332,22 +373,19 @@ function jobDescriptionPanel(app) {
 }
 
 function detailsPanel(app) {
-  const canOpen = isHttpUrl(app.jobUrl);
-  let displayUrl = "";
-  if (canOpen) {
-    try {
-      const parsed = new URL(app.jobUrl);
-      displayUrl = parsed.hostname.replace(/^www\./, "");
-    } catch (_) {
-      displayUrl = app.jobUrl;
-    }
-  } else {
-    displayUrl = app.jobUrl || "Not set";
-  }
-  if (displayUrl.length > 25) {
-    displayUrl = displayUrl.slice(0, 22) + "...";
-  }
-  const urlHtml = canOpen ? '<a class="detail-link" href="' + esc(app.jobUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(displayUrl) + '</a>' : esc(displayUrl);
+  const jobUrls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
+  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
+  const urlHtml = jobUrls.length ? '<div class="detail-url-list">' + jobUrls.map((url) => {
+    let displayUrl = url;
+    try { displayUrl = new URL(url).hostname.replace(/^www\./, ""); } catch (_) { /* show the entered value */ }
+    if (displayUrl.length > 25) displayUrl = displayUrl.slice(0, 22) + "...";
+    return isHttpUrl(url)
+      ? '<a class="detail-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(displayUrl) + '</a>'
+      : '<span>' + esc(displayUrl) + '</span>';
+  }).join("") + '</div>' : "Not set";
+  const sourceHtml = sources.length
+    ? '<div class="detail-url-list">' + sources.map((source) => '<span>' + esc(source) + '</span>').join("") + '</div>'
+    : "Not set";
   return '<div class="detail-section detail-section-fill">' +
     '<h3 class="detail-section-title">' + I.briefcase + 'Application Info</h3>' +
     '<div class="info-table cols-3 info-table-fill">' +
@@ -355,8 +393,8 @@ function detailsPanel(app) {
       infoRow("Role", app.role || "Role not set", !app.role) +
       infoRow("Status", headerStatusSelect(app), false, true, "border-right-0") +
       infoRow("Applied", formatDate(app.appliedAt), !app.appliedAt) +
-      infoRow("Source", app.source || "Not set", !app.source) +
-      infoRow("Job URL", urlHtml, !app.jobUrl, true, "border-right-0") +
+      infoRow("Sources", sourceHtml, !sources.length, true) +
+      infoRow("Source job URLs", urlHtml, !jobUrls.length, true, "border-right-0") +
       infoRow("Notes", app.notes || "No notes yet.", !app.notes, false, "span-3 border-right-0 border-bottom-0") +
     "</div>" +
   '</div>';
@@ -469,8 +507,10 @@ function buildJobContext(app) {
   const parts = [];
   if (app.company) parts.push("Company: " + app.company);
   if (app.role) parts.push("Role / title: " + app.role);
-  if (app.source) parts.push("Source: " + app.source);
-  if (app.jobUrl) parts.push("Job URL: " + app.jobUrl);
+  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
+  sources.forEach((source, index) => parts.push("Source " + (index + 1) + ": " + source));
+  const jobUrls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
+  jobUrls.forEach((url, index) => parts.push("Job URL " + (index + 1) + ": " + url));
   if (app.notes && app.notes.trim()) parts.push("User notes: " + app.notes.trim());
   const desc = (app.jobText || "").trim();
   parts.push("\nJob description:\n" + (desc || "(No full description provided. Base your assessment on the fields above and note that it relies on limited job information.)"));

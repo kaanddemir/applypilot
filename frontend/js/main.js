@@ -5,7 +5,7 @@
 import { store, LS } from "./store.js";
 import { state, $, persistApps, persistChat } from "./state.js";
 import { renderAll, renderSidebar, closeMobileSidebar } from "./render.js";
-import { openApplicationWizard, closeModal } from "./wizards.js";
+import { openApplicationWizard, closeModal } from "./wizards.js?v=3";
 import { newChatSession } from "./chat.js";
 import { updateProviderUI } from "./ai.js";
 
