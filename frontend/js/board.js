@@ -383,6 +383,9 @@ function renderTable(host, list) {
 
   const rows = pageApps.map((app) => {
     const reviewed = !!app.matchAnalysis;
+    // is-empty lets the card layout below 640px drop a field rather than print
+    // an em dash; the desktop table keeps the cell so the columns still line up.
+    const hasNotes = !!(app.notes && app.notes.trim());
     const statusSel = '<select class="mini-select js-row-status" data-id="' + esc(app.id) + '">' +
       STATUSES.map((s) => '<option value="' + esc(s) + '"' + (s === app.status ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select>";
     const picked = state.selectMode && state.selectedIds.has(app.id);
@@ -394,9 +397,11 @@ function renderTable(host, list) {
       '<td class="t-company">' + esc(app.company || "Untitled") + "</td>" +
       '<td class="t-role">' + esc(app.role || "—") + "</td>" +
       '<td class="t-status">' + statusSel + "</td>" +
-      "<td>" + esc(app.appliedAt ? formatDate(app.appliedAt) : "—") + "</td>" +
-      '<td>' + (reviewed ? '<span class="ai-pill">Reviewed</span>' : '<span class="muted">—</span>') + "</td>" +
-      '<td class="t-notes">' + esc(app.notes || "—") + "</td>" +
+      // data-label feeds the ::before caption the notes cell uses below 640px,
+      // where the header row is hidden.
+      '<td class="t-applied' + (app.appliedAt ? "" : " is-empty") + '">' + esc(app.appliedAt ? formatDate(app.appliedAt) : "—") + "</td>" +
+      '<td class="t-ai' + (reviewed ? "" : " is-empty") + '">' + (reviewed ? '<span class="ai-pill">Reviewed</span>' : '<span class="muted">—</span>') + "</td>" +
+      '<td class="t-notes' + (hasNotes ? "" : " is-empty") + '" data-label="Notes">' + esc(hasNotes ? app.notes : "—") + "</td>" +
       '<td class="t-edit"><button class="table-edit-btn js-row-edit" data-id="' + esc(app.id) + '" title="Edit application" aria-label="Edit application">' + I.edit + "</button></td>" +
     "</tr>";
   }).join("");
@@ -414,9 +419,7 @@ function renderTable(host, list) {
     : "";
 
   host.innerHTML =
-    // --table-page-rows lets the CSS reserve a full page of row space, so the pager
-    // below the table doesn't jump up when the last page is short.
-    '<div class="table-wrap" style="--table-page-rows: ' + TABLE_PAGE_SIZE + '"><table class="app-table' + (state.selectMode ? " has-select" : "") + '"><thead><tr>' + head + "</tr></thead><tbody>" +
+    '<div class="table-wrap"><table class="app-table' + (state.selectMode ? " has-select" : "") + '"><thead><tr>' + head + "</tr></thead><tbody>" +
     (rows || '<tr><td colspan="' + (state.selectMode ? 8 : 7) + '" class="muted table-empty-cell">No applications match your filters.</td></tr>') +
     "</tbody></table></div>" + pagination;
 

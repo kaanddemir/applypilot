@@ -477,7 +477,20 @@
   color: var(--text);
   border-color: var(--border);
 }
-@media (max-width: 600px) {
+/* ---------- Responsive ---------- */
+/* Breakpoints: sm 640 / md 900 / lg 1180 — see the scale documented in base.css. */
+@media (max-width: 900px) {
+  /* This has to live here rather than in app.css: .detail-grid-row's base rule is
+     in this file at equal specificity, and this file loads last. */
+  .detail-grid-row { grid-template-columns: 1fr; gap: 18px; }
+}
+@media (max-width: 640px) {
+  .settings-row-2col { grid-template-columns: 1fr; }
+  .choice-grid-4 { grid-template-columns: 1fr; }
+  .cv-preview { max-height: 60vh; padding: 20px; }
+  /* Matches the full-bleed modal in base.css, which .modal.large-modal would
+     otherwise outrank on specificity. */
+  .modal.large-modal { width: 100%; }
   .cv-summary-card {
     flex-direction: column;
     align-items: stretch;

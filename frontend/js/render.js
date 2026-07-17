@@ -118,6 +118,7 @@ export function deleteChatSession(id) {
   }
   persistChat();
   state.viewMode = "chat";
+  closeMobileSidebar();
   renderAll();
 }
 
@@ -128,4 +129,53 @@ export function renderMain() {
   else renderBoardPage();
 }
 
-export function closeMobileSidebar() { $("sidebar").classList.remove("open"); }
+/* ---------- Mobile drawer ---------- */
+// Below the 900px breakpoint the sidebar is an overlay drawer. Above it these
+// are no-ops, since the "open" class is only ever set here.
+let lastFocused = null;
+
+export function isSidebarOpen() {
+  return !!$("sidebar")?.classList.contains("open");
+}
+
+// Hidden controls can't take focus, and the drawer has two kinds: the collapse
+// button (display:none at this width) and the chat history section (hidden off
+// the chat view). offsetParent skips both.
+function drawerFocusables() {
+  return [...$("sidebar").querySelectorAll("button, input, [href], select, textarea")]
+    .filter((el) => el.offsetParent !== null && !el.disabled);
+}
+
+export function openMobileSidebar() {
+  const sb = $("sidebar");
+  if (!sb || sb.classList.contains("open")) return;
+  lastFocused = document.activeElement;
+  sb.classList.add("open");
+  $("sidebarScrim").hidden = false;
+  $("menuBtn")?.setAttribute("aria-expanded", "true");
+  drawerFocusables()[0]?.focus();
+}
+
+export function closeMobileSidebar() {
+  const sb = $("sidebar");
+  // Guard: this is called on every nav click and every Escape, including on
+  // desktop, where stealing focus back to the menu button would be wrong.
+  if (!sb || !sb.classList.contains("open")) return;
+  sb.classList.remove("open");
+  $("sidebarScrim").hidden = true;
+  $("menuBtn")?.setAttribute("aria-expanded", "false");
+  lastFocused?.focus();
+  lastFocused = null;
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || !isSidebarOpen()) return;
+  const f = drawerFocusables();
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  // Focus outside the drawer (or on the edges) wraps back in, so Tab can't
+  // wander into the page behind the scrim.
+  if (!$("sidebar").contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
