@@ -10,8 +10,10 @@ const BASE_EXPORT_COLUMNS = [
   { header: "Status", width: 12, get: (a) => a.status || "" },
   { header: "Applied", width: 14, get: (a) => (a.appliedAt ? formatDate(a.appliedAt) : "") },
   { header: "AI Reviewed", width: 12, get: (a) => (a.matchAnalysis ? "Yes" : "No") },
+  { header: "AI Fit", width: 40, get: (a) => a.matchAnalysis?.summary || "" },
   { header: "AI Recommendation", width: 48, get: (a) => a.matchAnalysis?.overall_recommendation || "" },
   { header: "Notes", width: 40, get: (a) => a.notes || "" },
+  { header: "Job Description", width: 72, get: (a) => a.jobText || "" },
   { header: "Created", width: 14, get: (a) => (a.createdAt ? formatDate(a.createdAt) : "") },
   { header: "Last Updated", width: 14, get: (a) => (a.updatedAt ? formatDate(a.updatedAt) : "") },
   { header: "Application ID", width: 24, get: (a) => a.id || "" },
@@ -173,7 +175,16 @@ function columnName(n) {
 }
 
 function xmlEsc(value) {
-  return String(value ?? "").replace(/[<>&'"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[ch]));
+  // XML 1.0 rejects most control characters and unpaired surrogates. Remove
+  // only invalid code points while preserving tabs, line breaks and emoji.
+  const safe = Array.from(String(value ?? "")).filter((ch) => {
+    const cp = ch.codePointAt(0);
+    return cp === 0x09 || cp === 0x0a || cp === 0x0d
+      || (cp >= 0x20 && cp <= 0xd7ff)
+      || (cp >= 0xe000 && cp <= 0xfffd)
+      || (cp >= 0x10000 && cp <= 0x10ffff);
+  }).join("");
+  return safe.replace(/[<>&'"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[ch]));
 }
 
 function zipFiles(files) {
@@ -272,8 +283,9 @@ export async function readExcelApplications(file) {
     const ci = {
       company: col("company"), role: col("role"), status: col("status"),
       applied: col("applied"), notes: col("notes"), created: col("created"),
+      jobText: col("job description"),
       updated: col("last updated"), reviewed: col("ai reviewed"),
-      recommendation: col("ai recommendation"), id: col("application id"),
+      fit: col("ai fit"), recommendation: col("ai recommendation"), id: col("application id"),
     };
     if (ci.company === -1 && ci.role === -1) {
       throw new Error("Missing Company/Role columns. Use a file exported from ApplyPilot.");
@@ -308,6 +320,7 @@ export async function readExcelApplications(file) {
     const raw = rows.slice(1)
       .filter((r) => r && r.some((v) => String(v || "").trim()))
       .map((r) => {
+        const fit = cell(r, ci.fit);
         const recommendation = cell(r, ci.recommendation);
         const reviewed = /^(yes|true|1)$/i.test(cell(r, ci.reviewed));
         return {
@@ -318,7 +331,8 @@ export async function readExcelApplications(file) {
           jobSources: pairedSources(r),
           appliedAt: cell(r, ci.applied),
           notes: cell(r, ci.notes),
-          matchAnalysis: reviewed || recommendation ? { overall_recommendation: recommendation } : null,
+          jobText: cell(r, ci.jobText),
+          matchAnalysis: reviewed || recommendation || fit ? { summary: fit, overall_recommendation: recommendation } : null,
           createdAt: cell(r, ci.created) || undefined,
           updatedAt: cell(r, ci.updated) || undefined,
         };

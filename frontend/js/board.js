@@ -520,16 +520,27 @@ function aiReviewPanel(app) {
   const a = app.matchAnalysis;
   const analyzed = !!a;
 
-  let tableRows = '';
+  // Rows are conditional (either field can be empty on older or partial
+  // analyses), so collect them and let the last one close the table's border.
+  const rows = [];
   if (analyzed) {
-    const recommendation = a.overall_recommendation || a.summary || "Analysis complete.";
-    tableRows += infoRow("AI Recommendation", recommendation, false, false, "span-3 border-right-0 border-bottom-0");
+    const fit = a.summary || a.overall_recommendation || "Analysis complete.";
+    rows.push(["Job fit", fit, false]);
+    // Skip when the fit row already fell back to this same text.
+    if (a.summary && a.overall_recommendation) rows.push(["What you can do", a.overall_recommendation, false]);
   } else {
     const hint = app.jobText
-      ? "Run the analysis to get a focused, honest recommendation for this role."
+      ? "Run the analysis to find out whether this role fits your CV, and what to do about it."
       : "Run the analysis from the details you entered, or paste the full job description below for a deeper review.";
-    tableRows += infoRow("AI Recommendation", hint, true, false, "span-3 border-right-0 border-bottom-0");
+    rows.push(["Job fit", hint, true]);
   }
+
+  const tableRows = rows.map(([label, value, muted], i) => {
+    const last = i === rows.length - 1;
+    // span-4: this table keeps the default 4 columns, so a narrower span would
+    // leave the row (and its divider) stopping short of the panel's edge.
+    return infoRow(label, value, muted, false, "span-4 border-right-0" + (last ? " border-bottom-0" : ""));
+  }).join("");
 
   return '<div class="detail-section">' +
     '<h3 class="detail-section-title">' + I.target + 'AI Review</h3>' +
