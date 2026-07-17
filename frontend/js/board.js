@@ -5,11 +5,12 @@
 import {
   state, $, esc, STATUSES, BOARD_STATUSES, filteredApps, selectedApp,
   formatDate, sourceFromUrl, isHttpUrl, setChatContext, touch, persistApps, toast,
+  mergeUniqueApplications, setSelectMode, toggleSelected, pruneSelection,
 } from "./state.js";
 import { I } from "./icons.js";
 import { analyze } from "./ai.js";
 import { renderAll } from "./render.js";
-import { openApplicationWizard, openCvWizard, openDeleteModal } from "./wizards.js?v=3";
+import { openApplicationWizard, openCvWizard, openDeleteModal, openDeleteApplications } from "./wizards.js?v=3";
 import { runCover } from "./chat.js";
 import { exportExcelTable, readExcelApplications } from "./excel.js";
 
@@ -41,6 +42,7 @@ export function renderBoardPage() {
       '<div class="data-menu-wrap">' +
         '<button class="icon-btn export-btn" id="dataMenuBtn" title="Import / Export" aria-label="Import or export applications">' + I.more + "</button>" +
         '<div class="data-menu" id="dataMenu">' +
+          '<button class="data-menu-item" id="selectModeBtn">' + I.check + "<span>" + (state.selectMode ? "Exit selection" : "Select applications") + "</span></button>" +
           '<button class="data-menu-item" id="exportExcelBtn">' + I.download + "<span>Export to Excel</span></button>" +
           '<button class="data-menu-item" id="importExcelBtn">' + I.upload + "<span>Import from Excel</span></button>" +
         "</div>" +
@@ -71,9 +73,10 @@ function wireBoardControls() {
   }
   const sort = $("sortSelect");
   if (sort) {
-    sort.value = state.sortBy;
-    sort.disabled = state.boardLayout === "kanban";
-    sort.title = state.boardLayout === "kanban" ? "Sorting is available in Table view" : "Sort applications";
+    // Kanban sorts inside each column: filteredApps() orders the whole list and
+    // the columns keep that order when they filter by status.
+    sort.value = state.sortBy.replace("-desc", "").replace("-asc", "");
+    sort.title = state.boardLayout === "kanban" ? "Sort applications within each column" : "Sort applications";
     sort.addEventListener("change", (e) => {
       state.sortBy = e.target.value;
       state.tablePage = 1;
@@ -87,8 +90,14 @@ function wireBoardControls() {
     document.addEventListener("click", () => menu.classList.remove("open"));
     menu.addEventListener("click", (e) => e.stopPropagation());
   }
+  const selectBtn = $("selectModeBtn");
+  if (selectBtn) selectBtn.addEventListener("click", () => {
+    menu?.classList.remove("open");
+    setSelectMode(!state.selectMode);
+    renderBoardPage();
+  });
   const exportBtn = $("exportExcelBtn");
-  if (exportBtn) exportBtn.addEventListener("click", () => { menu?.classList.remove("open"); exportExcelTable(filteredApps()); });
+  if (exportBtn) exportBtn.addEventListener("click", () => { menu?.classList.remove("open"); exportExcelTable(state.applications); });
   const importBtn = $("importExcelBtn");
   const importInput = $("importExcelInput");
   if (importBtn && importInput) {
@@ -109,28 +118,156 @@ function wireBoardControls() {
 async function importExcelFile(file) {
   try {
     const imported = await readExcelApplications(file);
-    state.applications = state.applications.concat(imported);
+    const result = mergeUniqueApplications(state.applications, imported);
+    state.applications = result.applications;
+    if (!state.applications.some((app) => app.id === state.selectedId)) {
+      state.selectedId = state.applications[0]?.id || "";
+    }
     state.tablePage = 1;
     persistApps();
     renderAll();
-    toast("Imported " + imported.length + " application" + (imported.length === 1 ? "" : "s"));
+    const messages = [];
+    if (result.added) messages.push("Imported " + result.added + " new application" + (result.added === 1 ? "" : "s"));
+    else messages.push("No new applications to import");
+    if (result.skipped) messages.push("skipped " + result.skipped + " duplicate" + (result.skipped === 1 ? "" : "s"));
+    if (result.removedExisting) messages.push("removed " + result.removedExisting + " existing duplicate" + (result.removedExisting === 1 ? "" : "s"));
+    toast(messages.join("; "));
   } catch (err) {
     toast(err.message || "Could not read that file.");
   }
 }
 
+// Statuses the kanban renders as columns; Archived only gets one when filtered to it.
+function boardColumns() {
+  return state.filter === "Archived" ? ["Archived"] : BOARD_STATUSES;
+}
+
 function renderBoard() {
   const host = $("boardHost");
+  pruneSelection();
   const list = filteredApps();
-  if (state.boardLayout === "table") { renderTable(host, list); return; }
+  host.innerHTML = "";
+  if (state.selectMode) {
+    // Kanban hides statuses without a column (e.g. Archived under "All"), so the
+    // bar must only offer what is actually on screen.
+    const columns = boardColumns();
+    const selectable = state.boardLayout === "table" ? list : list.filter((a) => columns.includes(a.status));
+    host.appendChild(selectionBar(selectable));
+  }
+  const layoutHost = document.createElement("div");
+  layoutHost.className = "layout-host";
+  host.appendChild(layoutHost);
+  if (state.boardLayout === "table") renderTable(layoutHost, list);
+  else renderKanban(layoutHost, list);
+}
+
+// Toolbar shown while bulk-select mode is on: select-all over the current
+// filter/search results, plus the bulk delete.
+function selectionBar(list) {
+  const bar = document.createElement("div");
+  bar.className = "select-bar";
+  const count = state.selectedIds.size;
+  const allSelected = list.length > 0 && list.every((a) => state.selectedIds.has(a.id));
+  bar.innerHTML =
+    '<label class="select-all-label">' +
+      '<input type="checkbox" class="js-select-all"' + (allSelected ? " checked" : "") + (list.length ? "" : " disabled") + " />" +
+      "<span>Select all</span>" +
+    "</label>" +
+    statusSelectMenu(list) +
+    '<span class="select-count">' + (count ? count + " of " + list.length + " selected" : "Nothing selected") + "</span>" +
+    '<div class="select-bar-actions">' +
+      '<button class="ghost-btn js-select-clear" type="button"' + (count ? "" : " disabled") + ">Clear</button>" +
+      '<button class="danger-btn js-select-delete" type="button"' + (count ? "" : " disabled") + ">" + I.trash + "Delete" + (count ? " " + count : "") + "</button>" +
+      '<button class="ghost-btn js-select-exit" type="button">Done</button>' +
+    "</div>";
+  bar.querySelector(".js-select-all").addEventListener("change", (e) => {
+    if (e.target.checked) list.forEach((a) => state.selectedIds.add(a.id));
+    else list.forEach((a) => state.selectedIds.delete(a.id));
+    renderBoard();
+  });
+  bar.querySelector(".js-select-clear").addEventListener("click", () => {
+    state.selectedIds.clear();
+    renderBoard();
+  });
+  bar.querySelector(".js-select-delete").addEventListener("click", () => {
+    const apps = state.applications.filter((a) => state.selectedIds.has(a.id));
+    openDeleteApplications(apps, () => state.selectedIds.clear());
+  });
+  bar.querySelector(".js-select-exit").addEventListener("click", () => {
+    setSelectMode(false);
+    renderBoardPage();
+  });
+  wireStatusSelectMenu(bar, list);
+  return bar;
+}
+
+// Status-group picker: one checkbox per status that is actually present in the
+// current results. The kanban has column checkboxes too; this keeps both views
+// working the same way.
+function statusSelectMenu(list) {
+  const groups = STATUSES.filter((s) => list.some((a) => a.status === s));
+  if (!groups.length) return "";
+  return '<div class="status-select-wrap">' +
+    '<button class="status-select-btn" type="button">Select by status' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>' +
+    "</button>" +
+    '<div class="status-select-menu">' + groups.map((status) => {
+      const apps = list.filter((a) => a.status === status);
+      const on = apps.every((a) => state.selectedIds.has(a.id));
+      return '<label class="status-select-item"><input type="checkbox" class="js-status-group" data-status="' + esc(status) + '"' + (on ? " checked" : "") + " />" +
+        "<span>" + esc(status) + '</span><span class="status-select-count">' + apps.length + "</span></label>";
+    }).join("") + "</div>" +
+  "</div>";
+}
+
+// The bar is rebuilt on every selection change, so the outside-click closer is
+// bound once against the document instead of once per menu.
+let statusMenuCloserBound = false;
+function wireStatusSelectMenu(bar, list) {
+  const wrap = bar.querySelector(".status-select-wrap");
+  if (!wrap) return;
+  const menu = wrap.querySelector(".status-select-menu");
+  wrap.querySelector(".status-select-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("open");
+  });
+  menu.addEventListener("click", (e) => e.stopPropagation());
+  if (!statusMenuCloserBound) {
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".status-select-menu.open").forEach((m) => m.classList.remove("open"));
+    });
+    statusMenuCloserBound = true;
+  }
+  wrap.querySelectorAll(".js-status-group").forEach((box) => box.addEventListener("change", () => {
+    const apps = list.filter((a) => a.status === box.dataset.status);
+    if (box.checked) apps.forEach((a) => state.selectedIds.add(a.id));
+    else apps.forEach((a) => state.selectedIds.delete(a.id));
+    renderBoard();
+    // renderBoard rebuilds the bar, so reopen the menu to keep picking groups.
+    $("boardHost").querySelector(".status-select-menu")?.classList.add("open");
+  }));
+}
+
+function renderKanban(host, list) {
   const board = document.createElement("div");
   board.className = "board";
-  const columns = state.filter === "Archived" ? ["Archived"] : BOARD_STATUSES;
-  columns.forEach((status) => {
+  boardColumns().forEach((status) => {
     const col = document.createElement("section");
     col.className = "column";
     const apps = list.filter((a) => a.status === status);
-    col.innerHTML = '<div class="column-head"><span class="column-title">' + esc(status) + '</span><span class="column-count">' + apps.length + "</span></div>";
+    const colAllPicked = apps.length > 0 && apps.every((a) => state.selectedIds.has(a.id));
+    col.innerHTML = '<div class="column-head">' +
+      (state.selectMode
+        ? '<input type="checkbox" class="js-col-select" title="Select all in ' + esc(status) + '" aria-label="Select all in ' + esc(status) + '"' +
+          (colAllPicked ? " checked" : "") + (apps.length ? "" : " disabled") + " />"
+        : "") +
+      '<span class="column-title">' + esc(status) + '</span><span class="column-count">' + apps.length + "</span></div>";
+    col.querySelector(".js-col-select")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.target.checked) apps.forEach((a) => state.selectedIds.add(a.id));
+      else apps.forEach((a) => state.selectedIds.delete(a.id));
+      renderBoard();
+    });
     col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drop-target"); });
     col.addEventListener("dragleave", (e) => {
       if (!col.contains(e.relatedTarget)) col.classList.remove("drop-target");
@@ -152,17 +289,20 @@ function renderBoard() {
     col.appendChild(body);
     board.appendChild(col);
   });
-  host.innerHTML = "";
   host.appendChild(board);
 }
 
 function appCard(app) {
   const card = document.createElement("button");
   card.type = "button";
-  card.draggable = true;
-  card.className = "app-card" + (app.id === state.selectedId ? " active" : "");
+  // Dragging a card would fight with tapping it to select, so it's off in select mode.
+  card.draggable = !state.selectMode;
+  const picked = state.selectMode && state.selectedIds.has(app.id);
+  card.className = "app-card" + (app.id === state.selectedId && !state.selectMode ? " active" : "") +
+    (state.selectMode ? " selectable" : "") + (picked ? " picked" : "");
   const reviewed = !!app.matchAnalysis;
   card.innerHTML =
+    (state.selectMode ? '<span class="card-check' + (picked ? " on" : "") + '" aria-hidden="true">' + (picked ? I.check : "") + "</span>" : "") +
     '<div class="card-top">' +
       '<div class="card-title">' +
         '<div class="company">' + esc(app.company || "Untitled company") + "</div>" +
@@ -175,7 +315,13 @@ function appCard(app) {
       '<span class="notes-label">Notes</span>' +
       '<span class="notes-text">' + esc(app.notes || "No notes yet") + "</span>" +
     "</div>";
+  card.setAttribute("aria-pressed", picked ? "true" : "false");
   card.addEventListener("click", () => {
+    if (state.selectMode) {
+      toggleSelected(app.id);
+      renderBoard();
+      return;
+    }
     state.selectedId = app.id;
     state.viewMode = "detail";
     renderAll();
@@ -217,7 +363,11 @@ function renderTable(host, list) {
     ai: "ai",
     notes: "notes"
   };
-  const head = cols.map(([key, label]) => {
+  const pageAllSelected = pageApps.length > 0 && pageApps.every((a) => state.selectedIds.has(a.id));
+  const selectHead = state.selectMode
+    ? '<th class="t-select"><input type="checkbox" class="js-page-select-all" aria-label="Select all rows on this page"' + (pageAllSelected ? " checked" : "") + (pageApps.length ? "" : " disabled") + " /></th>"
+    : "";
+  const head = selectHead + cols.map(([key, label]) => {
     const sortable = sortMap[key];
     const baseSort = state.sortBy.replace("-desc", "").replace("-asc", "");
     const active = sortable && baseSort === sortMap[key];
@@ -235,7 +385,12 @@ function renderTable(host, list) {
     const reviewed = !!app.matchAnalysis;
     const statusSel = '<select class="mini-select js-row-status" data-id="' + esc(app.id) + '">' +
       STATUSES.map((s) => '<option value="' + esc(s) + '"' + (s === app.status ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select>";
-    return '<tr data-id="' + esc(app.id) + '">' +
+    const picked = state.selectMode && state.selectedIds.has(app.id);
+    const selectCell = state.selectMode
+      ? '<td class="t-select"><input type="checkbox" class="js-row-select" data-id="' + esc(app.id) + '" aria-label="Select application"' + (picked ? " checked" : "") + " /></td>"
+      : "";
+    return '<tr data-id="' + esc(app.id) + '"' + (picked ? ' class="picked"' : "") + ">" +
+      selectCell +
       '<td class="t-company">' + esc(app.company || "Untitled") + "</td>" +
       '<td class="t-role">' + esc(app.role || "—") + "</td>" +
       '<td class="t-status">' + statusSel + "</td>" +
@@ -259,8 +414,10 @@ function renderTable(host, list) {
     : "";
 
   host.innerHTML =
-    '<div class="table-wrap"><table class="app-table"><thead><tr>' + head + "</tr></thead><tbody>" +
-    (rows || '<tr><td colspan="7" class="muted table-empty-cell">No applications match your filters.</td></tr>') +
+    // --table-page-rows lets the CSS reserve a full page of row space, so the pager
+    // below the table doesn't jump up when the last page is short.
+    '<div class="table-wrap" style="--table-page-rows: ' + TABLE_PAGE_SIZE + '"><table class="app-table' + (state.selectMode ? " has-select" : "") + '"><thead><tr>' + head + "</tr></thead><tbody>" +
+    (rows || '<tr><td colspan="' + (state.selectMode ? 8 : 7) + '" class="muted table-empty-cell">No applications match your filters.</td></tr>') +
     "</tbody></table></div>" + pagination;
 
   host.querySelectorAll("thead .sortable").forEach((th) => th.addEventListener("click", () => {
@@ -303,7 +460,23 @@ function renderTable(host, list) {
       if (app) openApplicationWizard(app);
     });
   });
+  host.querySelector(".js-page-select-all")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (e.target.checked) pageApps.forEach((a) => state.selectedIds.add(a.id));
+    else pageApps.forEach((a) => state.selectedIds.delete(a.id));
+    renderBoard();
+  });
+  host.querySelectorAll(".js-row-select").forEach((box) => box.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleSelected(box.dataset.id);
+    renderBoard();
+  }));
   host.querySelectorAll("tbody tr[data-id]").forEach((tr) => tr.addEventListener("click", () => {
+    if (state.selectMode) {
+      toggleSelected(tr.dataset.id);
+      renderBoard();
+      return;
+    }
     state.selectedId = tr.dataset.id;
     state.viewMode = "detail";
     renderAll();

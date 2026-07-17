@@ -222,6 +222,16 @@
 .content:has(.chat-page) { padding-bottom: 0; }
 
 /* ---------- Board ---------- */
+/* Kanban fills the viewport so each column scrolls on its own; the table view
+   keeps the normal page scroll (.board only exists in kanban). */
+/* padding-bottom: 0 — the columns scroll to the viewport edge, so a gap under them
+   is just dead space below a card that's already clipped by the scroll. */
+.content:has(.board) { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0; }
+.content:has(.board) .toolbar,
+.content:has(.board) .select-bar { flex: none; }
+.content:has(.board) #boardHost,
+.content:has(.board) .layout-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .seg { display: inline-flex; gap: 3px; padding: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); }
 .seg-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
@@ -277,7 +287,8 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   align-items: stretch;
-  min-height: max(420px, calc(100dvh - 176px));
+  height: 100%;
+  min-height: 0;
   background: transparent;
 }
 .column {
@@ -289,6 +300,7 @@
   flex-direction: column;
   transition: background 0.14s ease, box-shadow 0.14s ease;
 }
+.column.drop-target { background: var(--surface-2); }
 .column::after {
   content: "";
   position: absolute;
@@ -301,6 +313,7 @@
 }
 .column:last-child::after { display: none; }
 .column-head {
+  flex: none;
   height: 48px; padding: 0 14px;
   display: flex; align-items: center; gap: 8px;
   border-bottom: 1px solid var(--border-soft);
@@ -312,7 +325,12 @@
   background: var(--surface-2); color: var(--text-faint);
   display: grid; place-items: center; font-size: 12px; font-weight: 700;
 }
-.column-body { display: flex; flex-direction: column; gap: 10px; padding: 14px 12px; min-height: 0; flex: 1; }
+.column-body {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px 12px;
+  min-height: 0; flex: 1;
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
 .app-card {
   text-align: left;
   width: min(100%, 248px);
@@ -1007,7 +1025,8 @@
 .data-menu {
   position: absolute; right: 0; top: 44px; width: 208px;
   border: 1px solid var(--border); background: var(--surface);
-  border-radius: var(--r-md); box-shadow: var(--shadow); padding: 6px; z-index: 35; display: none;
+  /* Above the select bar (z-index 40), which it opens over. */
+  border-radius: var(--r-md); box-shadow: var(--shadow); padding: 6px; z-index: 60; display: none;
 }
 .data-menu.open { display: block; }
 .data-menu-item {
@@ -1018,6 +1037,93 @@
 .data-menu-item.danger { color: var(--error); }
 .data-menu-item.danger:hover { background: var(--error-soft); color: var(--error); }
 .data-menu-item svg { flex: none; }
+
+/* ---------- Bulk selection ---------- */
+.select-bar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  padding: 10px 14px; margin-bottom: 12px;
+  /* backdrop-filter makes this a stacking context, so the bar itself has to sit
+     above the table for the status menu to escape it. */
+  position: relative; z-index: 40;
+  border: 1.5px dashed var(--accent-press);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.46));
+  -webkit-backdrop-filter: blur(10px) saturate(1.3);
+  backdrop-filter: blur(10px) saturate(1.3);
+  border-radius: var(--r-md);
+}
+.select-all-label {
+  display: flex; align-items: center; gap: 9px;
+  padding-right: 14px; border-right: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+.select-count {
+  margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* In kanban there is no status menu between them, so the label's own divider
+   already separates the count. */
+.select-all-label + .select-count { padding-left: 0; border-left: 0; }
+.status-select-wrap { position: relative; margin-left: 14px; }
+.status-select-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0; height: auto; border: 0; background: none;
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+}
+.status-select-btn:hover { background: none; color: var(--accent); }
+.status-select-btn svg { transition: transform 0.14s ease; }
+.status-select-wrap:has(.status-select-menu.open) .status-select-btn { color: var(--accent); }
+.status-select-wrap:has(.status-select-menu.open) .status-select-btn svg { transform: rotate(180deg); }
+.status-select-menu {
+  position: absolute; left: 0; top: 28px; width: 200px; z-index: 35; display: none;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: var(--r-md); box-shadow: var(--shadow); padding: 6px;
+}
+.status-select-menu.open { display: block; }
+.status-select-item {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 7px 9px; border-radius: var(--r-sm); font-size: 13px; color: var(--text-muted);
+}
+.status-select-item:hover { background: var(--accent-soft); color: var(--accent); }
+.status-select-item input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; }
+.status-select-item > span:first-of-type { flex: 1; font-weight: 600; }
+.status-select-count {
+  min-width: 20px; height: 19px; padding: 0 5px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-faint);
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 700;
+}
+.select-bar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.select-bar-actions button { height: 32px; padding: 0 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.select-bar-actions button:disabled { opacity: 0.45; cursor: default; }
+.select-bar input[type="checkbox"],
+.column-head input[type="checkbox"],
+.app-table input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; vertical-align: middle; }
+.column-head input[type="checkbox"]:disabled { opacity: 0.4; cursor: default; }
+
+.app-card.selectable { position: relative; padding-right: 34px; }
+.card-check {
+  position: absolute; top: 12px; right: 12px;
+  width: 17px; height: 17px; display: grid; place-items: center;
+  border: 1.5px solid #b49830; background: #fffdf0; color: #4a3c08;
+}
+.card-check.on { background: #b49830; color: #fff; }
+.card-check svg { width: 12px; height: 12px; }
+.app-card.selectable:hover { transform: none; }
+.app-card.picked { border-color: #b49830; box-shadow: 0 0 0 2px rgba(180, 152, 48, 0.4); }
+
+.app-table th.t-select, .app-table td.t-select { width: 40px; text-align: center; }
+/* Out of the line box: as an inline element the checkbox grows the head by ~3px in
+   select mode, which would push the head past the height reserved for the pager. */
+.app-table thead th.t-select input[type="checkbox"] { display: block; margin: 0 auto; }
+.app-table tbody tr.picked { background: var(--accent-soft); }
+/* The select column shifts the short centered columns one place to the right. */
+.app-table.has-select th:nth-child(3), .app-table.has-select tbody td:nth-child(3) { text-align: left; }
+.app-table.has-select th:nth-child(4), .app-table.has-select tbody td:nth-child(4),
+.app-table.has-select th:nth-child(5), .app-table.has-select tbody td:nth-child(5),
+.app-table.has-select th:nth-child(6), .app-table.has-select tbody td:nth-child(6) { text-align: center; }
+
+.delete-list { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; color: var(--text-muted); }
+.delete-list li { list-style: disc; }
 
 /* ---------- Collapsible sidebar ---------- */
 .brand-title,
@@ -1142,8 +1248,29 @@
 }
 
 /* ---------- Table (Excel-like) view ---------- */
-.table-wrap { border: 1px solid var(--border); border-radius: 0; overflow: auto; background: var(--surface); box-shadow: var(--shadow-xs); }
-.app-table { width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed; }
+/* The wrap is just a scrollport and a height reservation — the frame lives on the
+   table itself, so a short last page leaves plain background rather than an empty box. */
+.table-wrap {
+  overflow: auto;
+  /* Heights of the sticky head (11px padding + text line + 1px border) and of a
+     row (10px padding + the 30px .mini-select + 1px border). */
+  --table-head-h: 41px;
+  --table-row-h: 51px;
+}
+/* When paginated, hold a full page worth of rows so the pager keeps the same spot
+   on a short last page — you shouldn't have to chase the button you just clicked.
+   --table-page-rows comes from TABLE_PAGE_SIZE in board.js. */
+.layout-host:has(.table-pagination) .table-wrap {
+  min-height: calc(var(--table-head-h) + var(--table-page-rows, 10) * var(--table-row-h));
+}
+.app-table {
+  width: 100%; border-collapse: collapse; font-size: 13.5px; table-layout: fixed;
+  background: var(--surface); box-shadow: var(--shadow-xs);
+  /* outline rather than border: it takes no space and stays out of border-collapse,
+     which would otherwise hand the bottom edge to the last row's lighter color. */
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+}
 .app-table thead th {
   position: sticky; top: 0; z-index: 1; text-align: left; white-space: nowrap;
   background: var(--surface-2); color: var(--text-faint);
@@ -1291,4 +1418,11 @@
   .meta-strip { grid-template-columns: 1fr 1fr; }
   .msg.user, .msg.assistant { max-width: 90%; }
   .review-row { grid-template-columns: 1fr; gap: 3px; }
+}
+
+@media (max-height: 520px) {
+  /* Too short to give each column a usable scroll area — fall back to page scroll. */
+  .content:has(.board) { overflow: auto; display: block; }
+  .board { height: auto; min-height: 420px; }
+  .column-body { overflow-y: visible; }
 }

@@ -56,6 +56,53 @@ export function normalizeApps(items) {
   });
 }
 
+function applicationIdentityKeys(app) {
+  const keys = [];
+  if (app.id) keys.push("id:" + String(app.id).trim());
+  const urls = (app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []))
+    .map((value) => {
+      try {
+        const url = new URL(String(value).trim());
+        url.hash = "";
+        if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+        return url.toString();
+      } catch (_) {
+        return String(value || "").trim().toLowerCase().replace(/\/+$/, "");
+      }
+    })
+    .filter(Boolean);
+  urls.forEach((url) => keys.push("url:" + url));
+  if (!urls.length) {
+    const text = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const company = text(app.company);
+    const role = text(app.role);
+    if (company || role) keys.push("record:" + company + "|" + role + "|" + text(app.appliedAt));
+  }
+  return keys;
+}
+
+export function mergeUniqueApplications(existing, imported) {
+  const seen = new Set();
+  const applications = [];
+  let removedExisting = 0;
+  let skipped = 0;
+  let added = 0;
+  const add = (app, fromImport) => {
+    const keys = applicationIdentityKeys(app);
+    if (keys.some((key) => seen.has(key))) {
+      if (fromImport) skipped++;
+      else removedExisting++;
+      return;
+    }
+    keys.forEach((key) => seen.add(key));
+    applications.push(app);
+    if (fromImport) added++;
+  };
+  existing.forEach((app) => add(app, false));
+  imported.forEach((app) => add(app, true));
+  return { applications, added, skipped, removedExisting };
+}
+
 export function normalizeSessions(items) {
   if (!Array.isArray(items) || !items.length) {
     const s = { id: uid(), title: "Assistant", createdAt: Date.now(), thread: [], contextAppId: "" };
@@ -83,6 +130,10 @@ export const state = {
   sortBy: store.get(LS.sortBy, "updated"),
   boardLayout: store.get(LS.boardLayout, "kanban") === "table" ? "table" : "kanban",
   tablePage: 1,
+  // Bulk-select mode for the board/table; deliberately not persisted so a
+  // reload always comes back in normal browsing mode.
+  selectMode: false,
+  selectedIds: new Set(),
   chatSessions: [],
   activeChatId: store.get(LS.active, ""),
   streaming: false,
@@ -91,7 +142,11 @@ export const state = {
 };
 
 // Populate collections now that `state` exists (normalizeSessions references it).
-state.applications = normalizeApps(store.getJSON(LS.applications, []));
+// Also repair duplicate rows left by older versions that appended every import.
+const storedApplications = normalizeApps(store.getJSON(LS.applications, []));
+const initialApplications = mergeUniqueApplications(storedApplications, []);
+state.applications = initialApplications.applications;
+if (initialApplications.removedExisting) store.setJSON(LS.applications, state.applications);
 state.chatSessions = normalizeSessions(store.getJSON(LS.sessions, []));
 
 // Restore the persisted view/selection, falling back sanely if it's stale.
@@ -156,6 +211,21 @@ export function activeChat() {
   return s;
 }
 export function touch(app) { app.updatedAt = Date.now(); }
+
+// --- bulk selection ---
+export function setSelectMode(on) {
+  state.selectMode = !!on;
+  if (!state.selectMode) state.selectedIds.clear();
+}
+export function toggleSelected(id) {
+  if (state.selectedIds.has(id)) state.selectedIds.delete(id);
+  else state.selectedIds.add(id);
+}
+// Drop ids that no longer exist (deleted, or filtered out of the current view).
+export function pruneSelection() {
+  const alive = new Set(state.applications.map((a) => a.id));
+  state.selectedIds.forEach((id) => { if (!alive.has(id)) state.selectedIds.delete(id); });
+}
 
 // --- formatting ---
 export function formatDate(s) {

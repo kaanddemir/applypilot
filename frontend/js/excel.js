@@ -4,24 +4,54 @@ import { formatDate, normalizeApps } from "./state.js";
 
 // Column model for the Excel export. Keep Company/Role/Status/Source/Applied/
 // Notes names stable so exported files round-trip through the importer.
-const EXPORT_COLUMNS = [
+const BASE_EXPORT_COLUMNS = [
   { header: "Company", width: 22, get: (a) => a.company || "" },
   { header: "Role", width: 26, get: (a) => a.role || "" },
   { header: "Status", width: 12, get: (a) => a.status || "" },
-  { header: "Source", width: 16, get: (a) => (a.sources?.length ? a.sources : (a.source ? [a.source] : [])).join("\n") },
-  { header: "Job URL", width: 34, get: (a) => (a.jobUrls?.length ? a.jobUrls : (a.jobUrl ? [a.jobUrl] : [])).join("\n") },
   { header: "Applied", width: 14, get: (a) => (a.appliedAt ? formatDate(a.appliedAt) : "") },
   { header: "AI Reviewed", width: 12, get: (a) => (a.matchAnalysis ? "Yes" : "No") },
   { header: "AI Recommendation", width: 48, get: (a) => a.matchAnalysis?.overall_recommendation || "" },
   { header: "Notes", width: 40, get: (a) => a.notes || "" },
   { header: "Created", width: 14, get: (a) => (a.createdAt ? formatDate(a.createdAt) : "") },
   { header: "Last Updated", width: 14, get: (a) => (a.updatedAt ? formatDate(a.updatedAt) : "") },
+  { header: "Application ID", width: 24, get: (a) => a.id || "" },
 ];
 
+function applicationSources(app) {
+  if (Array.isArray(app.jobSources) && app.jobSources.length) return app.jobSources;
+  const urls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
+  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
+  return Array.from({ length: Math.max(urls.length, sources.length) }, (_, index) => ({
+    url: urls[index] || "",
+    source: sources[index] || "",
+  }));
+}
+
+function exportColumns(apps) {
+  const sourceCount = Math.max(1, ...apps.map((app) => applicationSources(app).length));
+  const sourceColumns = [];
+  for (let index = 0; index < sourceCount; index++) {
+    const suffix = sourceCount === 1 ? "" : " " + (index + 1);
+    sourceColumns.push(
+      { header: "Source" + suffix, width: 18, get: (a) => applicationSources(a)[index]?.source || "" },
+      {
+        header: "Job URL" + suffix,
+        width: 42,
+        get: (a) => {
+          const url = applicationSources(a)[index]?.url || "";
+          return /^https?:\/\/\S+$/i.test(url) ? { value: url, hyperlink: url } : url;
+        },
+      },
+    );
+  }
+  return BASE_EXPORT_COLUMNS.slice(0, 3).concat(sourceColumns, BASE_EXPORT_COLUMNS.slice(3));
+}
+
 export function exportExcelTable(apps) {
-  const rows = [EXPORT_COLUMNS.map((c) => c.header)]
-    .concat(apps.map((app) => EXPORT_COLUMNS.map((c) => c.get(app))));
-  const blob = buildXlsx(rows, EXPORT_COLUMNS.map((c) => c.width));
+  const columns = exportColumns(apps);
+  const rows = [columns.map((c) => c.header)]
+    .concat(apps.map((app) => columns.map((c) => c.get(app))));
+  const blob = buildXlsx(rows, columns.map((c) => c.width));
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -34,10 +64,11 @@ export function exportExcelTable(apps) {
 }
 
 function buildXlsx(rows, widths) {
+  const hyperlinks = [];
   const sheetRows = rows.map((row, rIdx) => {
     const attrs = rIdx === 0 ? ' ht="26" customHeight="1"' : "";
     return '<row r="' + (rIdx + 1) + '"' + attrs + '>' +
-      row.map((value, cIdx) => cellXml(cIdx, rIdx, value)).join("") + "</row>";
+      row.map((value, cIdx) => cellXml(cIdx, rIdx, value, hyperlinks)).join("") + "</row>";
   }).join("");
   const colCount = rows[0] ? rows[0].length : 1;
   const lastCol = columnName(colCount);
@@ -49,6 +80,15 @@ function buildXlsx(rows, widths) {
     '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' +
     '<selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>';
   const autoFilter = '<autoFilter ref="A1:' + lastCol + lastRow + '"/>';
+  const hyperlinkXml = hyperlinks.length
+    ? "<hyperlinks>" + hyperlinks.map((link) => '<hyperlink ref="' + link.ref + '" r:id="' + link.id + '"/>').join("") + "</hyperlinks>"
+    : "";
+  const hyperlinkRels = hyperlinks.length
+    ? '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      hyperlinks.map((link) => '<Relationship Id="' + link.id + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlEsc(link.target) + '" TargetMode="External"/>').join("") +
+      "</Relationships>"
+    : "";
   const files = {
     "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -72,9 +112,10 @@ function buildXlsx(rows, widths) {
       "</Relationships>",
     "xl/styles.xml": '<?xml version="1.0" encoding="UTF-8"?>' +
       '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      '<fonts count="2">' +
+      '<fonts count="3">' +
         '<font><sz val="11"/><color rgb="FF1F2430"/><name val="Calibri"/></font>' +
         '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+        '<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/></font>' +
       '</fonts>' +
       '<fills count="4">' +
         '<fill><patternFill patternType="none"/></fill>' +
@@ -87,29 +128,37 @@ function buildXlsx(rows, widths) {
         '<border><left style="thin"><color rgb="FFDDE1EA"/></left><right style="thin"><color rgb="FFDDE1EA"/></right><top style="thin"><color rgb="FFDDE1EA"/></top><bottom style="thin"><color rgb="FFDDE1EA"/></bottom><diagonal/></border>' +
       '</borders>' +
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-      '<cellXfs count="4">' +
+      '<cellXfs count="6">' +
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>' +
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
         '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
       '</cellXfs>' +
       "</styleSheet>",
     "xl/worksheets/sheet1.xml": '<?xml version="1.0" encoding="UTF-8"?>' +
-      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
       sheetViews +
       '<sheetFormatPr defaultRowHeight="15"/>' +
       cols +
       '<sheetData>' + sheetRows + "</sheetData>" +
       autoFilter +
+      hyperlinkXml +
       "</worksheet>",
   };
+  if (hyperlinkRels) files["xl/worksheets/_rels/sheet1.xml.rels"] = hyperlinkRels;
   return zipFiles(files);
 }
 
-function cellXml(cIdx, rIdx, value) {
+function cellXml(cIdx, rIdx, rawValue, hyperlinks) {
   const ref = columnName(cIdx + 1) + (rIdx + 1);
+  const isHyperlink = rawValue && typeof rawValue === "object" && rawValue.hyperlink;
+  const value = isHyperlink ? rawValue.value : rawValue;
   // 1 = header, 2 = data, 3 = zebra (alternating data rows)
-  const s = rIdx === 0 ? 1 : (rIdx % 2 === 1 ? 2 : 3);
+  // 4/5 are the corresponding hyperlink styles.
+  const s = rIdx === 0 ? 1 : (isHyperlink ? (rIdx % 2 === 1 ? 4 : 5) : (rIdx % 2 === 1 ? 2 : 3));
+  if (isHyperlink) hyperlinks.push({ ref, id: "rId" + (hyperlinks.length + 1), target: rawValue.hyperlink });
   return '<c r="' + ref + '" t="inlineStr" s="' + s + '"><is><t xml:space="preserve">' + xmlEsc(value) + "</t></is></c>";
 }
 
@@ -220,20 +269,60 @@ export async function readExcelApplications(file) {
 
     const header = (rows[0] || []).map((h) => String(h || "").trim().toLowerCase());
     const col = (name) => header.indexOf(name);
-    const ci = { company: col("company"), role: col("role"), status: col("status"), applied: col("applied"), notes: col("notes") };
+    const ci = {
+      company: col("company"), role: col("role"), status: col("status"),
+      applied: col("applied"), notes: col("notes"), created: col("created"),
+      updated: col("last updated"), reviewed: col("ai reviewed"),
+      recommendation: col("ai recommendation"), id: col("application id"),
+    };
     if (ci.company === -1 && ci.role === -1) {
       throw new Error("Missing Company/Role columns. Use a file exported from ApplyPilot.");
     }
     const cell = (row, i) => (i >= 0 ? String((row && row[i]) ?? "").trim() : "");
+    const numberedColumns = (name) => header
+      .map((value, index) => {
+        const match = new RegExp("^" + name + "(?:\\s+(\\d+))?$").exec(value);
+        return match ? { index, order: match[1] ? Number(match[1]) : 1 } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.order - b.order);
+    const sourceColumns = numberedColumns("source");
+    const urlColumns = numberedColumns("job url");
+    const pairedSources = (row) => {
+      const count = Math.max(sourceColumns.length, urlColumns.length);
+      const pairs = [];
+      for (let index = 0; index < count; index++) {
+        // Older exports stored several values on separate lines in one cell.
+        // Splitting here keeps those files compatible with the new one-link-per-cell layout.
+        const sources = cell(row, sourceColumns[index]?.index ?? -1).split(/\r?\n/);
+        const urls = cell(row, urlColumns[index]?.index ?? -1).split(/\r?\n/);
+        const lineCount = Math.max(sources.length, urls.length);
+        for (let line = 0; line < lineCount; line++) {
+          const source = (sources[line] || "").trim();
+          const url = (urls[line] || "").trim();
+          if (source || url) pairs.push({ source, url });
+        }
+      }
+      return pairs;
+    };
     const raw = rows.slice(1)
       .filter((r) => r && r.some((v) => String(v || "").trim()))
-      .map((r) => ({
-        company: cell(r, ci.company),
-        role: cell(r, ci.role),
-        status: cell(r, ci.status),
-        appliedAt: cell(r, ci.applied),
-        notes: cell(r, ci.notes),
-      }));
+      .map((r) => {
+        const recommendation = cell(r, ci.recommendation);
+        const reviewed = /^(yes|true|1)$/i.test(cell(r, ci.reviewed));
+        return {
+          id: cell(r, ci.id) || undefined,
+          company: cell(r, ci.company),
+          role: cell(r, ci.role),
+          status: cell(r, ci.status),
+          jobSources: pairedSources(r),
+          appliedAt: cell(r, ci.applied),
+          notes: cell(r, ci.notes),
+          matchAnalysis: reviewed || recommendation ? { overall_recommendation: recommendation } : null,
+          createdAt: cell(r, ci.created) || undefined,
+          updatedAt: cell(r, ci.updated) || undefined,
+        };
+      });
     const imported = normalizeApps(raw);
     if (!imported.length) throw new Error("No rows to import.");
     return imported;

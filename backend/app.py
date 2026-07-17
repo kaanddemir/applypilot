@@ -16,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -117,6 +117,17 @@ def prompt_config():
         "system_prompt": prompts.system_prompt_template(),
         "analyze_framing": prompts.ANALYZE_FRAMING,
     }
+
+
+@app.middleware("http")
+async def no_store_frontend(request: Request, call_next):
+    """StaticFiles sends no Cache-Control, which lets browsers serve the frontend
+    from cache without revalidating (heuristic freshness) — edits to the JS/CSS
+    then appear to do nothing until a hard reload. Force revalidation instead."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
 
 
 # Serve the frontend at the root. Mounted last so /api/* takes precedence.

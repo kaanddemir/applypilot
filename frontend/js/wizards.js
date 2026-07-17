@@ -365,21 +365,40 @@ export function openCvWizard(message) {
 // Delete confirmation
 // ---------------------------------------------------------------------------
 export function openDeleteModal(app) {
+  openDeleteApplications([app]);
+}
+
+// Confirms deletion of one or many applications. `onDeleted` lets the caller
+// (e.g. bulk select mode) clean up its own state after the records are gone.
+export function openDeleteApplications(apps, onDeleted) {
+  const list = (apps || []).filter(Boolean);
+  if (!list.length) return;
+  const many = list.length > 1;
+  const preview = many
+    ? '<ul class="delete-list">' + list.slice(0, 6).map((a) =>
+        "<li>" + esc(a.company || "Untitled") + " - " + esc(a.role || "Role not set") + "</li>").join("") +
+      (list.length > 6 ? '<li class="muted">and ' + (list.length - 6) + " more…</li>" : "") + "</ul>"
+    : "";
+  const question = many
+    ? "Delete " + list.length + " applications?"
+    : "Delete " + esc(list[0].company) + " - " + esc(list[0].role) + "?";
   openModal(
-    '<div class="modal-head"><h2>Delete application</h2><button class="icon-btn" id="modalClose">' + I.close + "</button></div>" +
-    '<div class="modal-body"><p class="hint">Delete ' + esc(app.company) + " - " + esc(app.role) + "? This only removes the local browser record.</p></div>" +
-    '<div class="modal-foot"><button class="ghost-btn" id="wizCancel">Cancel</button><button class="danger-btn" id="confirmDelete">' + I.trash + "Delete</button></div>",
+    '<div class="modal-head"><h2>Delete application' + (many ? "s" : "") + '</h2><button class="icon-btn" id="modalClose">' + I.close + "</button></div>" +
+    '<div class="modal-body"><p class="hint">' + question + " This only removes the local browser record" + (many ? "s" : "") + ".</p>" + preview + "</div>" +
+    '<div class="modal-foot"><button class="ghost-btn" id="wizCancel">Cancel</button><button class="danger-btn" id="confirmDelete">' + I.trash + "Delete" + (many ? " " + list.length : "") + "</button></div>",
     true
   );
   $("modalClose").addEventListener("click", closeModal);
   $("wizCancel").addEventListener("click", closeModal);
   $("confirmDelete").addEventListener("click", () => {
-    state.applications = state.applications.filter((a) => a.id !== app.id);
-    state.selectedId = state.applications[0]?.id || "";
+    const ids = new Set(list.map((a) => a.id));
+    state.applications = state.applications.filter((a) => !ids.has(a.id));
+    if (ids.has(state.selectedId)) state.selectedId = state.applications[0]?.id || "";
     state.viewMode = "board";
     persistApps();
     closeModal();
+    if (onDeleted) onDeleted();
     renderAll();
-    toast("Application deleted");
+    toast(many ? list.length + " applications deleted" : "Application deleted");
   });
 }
