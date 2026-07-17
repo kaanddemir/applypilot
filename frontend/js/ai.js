@@ -57,7 +57,6 @@ export function hasKey(p) { return !!getKey(p); }
 // Whether the stored key has passed a live validation call this session:
 // undefined = not yet checked, true = verified, false = rejected by provider.
 const keyValidated = {};
-export function keyStatus(p) { return keyValidated[p]; }
 export function getModel(p) { const m = PROVIDERS[p]; return m ? store.get(m.modelLS, m.def) : ""; }
 export function setModel(p, val) { const m = PROVIDERS[p]; if (m) store.set(m.modelLS, val || m.def); updateProviderUI(); }
 

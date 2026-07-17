@@ -274,7 +274,7 @@ function buildAppContext(app, question) {
     "- Company: " + (app.company || "Unknown"),
     "- Role: " + (app.role || "Unknown"),
     "- Status: " + (app.status || "Unknown"),
-    "- Source: " + (app.source || "Unknown"),
+    "- Source: " + (app.jobSources.map((entry) => entry.source).filter(Boolean).join(", ") || "Unknown"),
   ];
   if (app.notes && app.notes.trim()) lines.push("- Notes: " + app.notes.trim());
 
@@ -370,10 +370,10 @@ function buildCoverContext(app) {
   const lines = [];
   if (app.company) lines.push("Company: " + app.company);
   if (app.role) lines.push("Role / title: " + app.role);
-  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
-  sources.forEach((source, index) => lines.push("Source " + (index + 1) + ": " + source));
-  const jobUrls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
-  jobUrls.forEach((url, index) => lines.push("Job URL " + (index + 1) + ": " + url));
+  app.jobSources.forEach((entry, index) => {
+    if (entry.source) lines.push("Source " + (index + 1) + ": " + entry.source);
+    if (entry.url) lines.push("Job URL " + (index + 1) + ": " + entry.url);
+  });
   if (app.notes && app.notes.trim()) lines.push("User notes: " + app.notes.trim());
   const desc = (app.jobText || "").trim();
   lines.push("", "Job description:");

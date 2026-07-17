@@ -118,7 +118,6 @@ button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .content { flex: 1; min-width: 0; overflow: auto; padding: 24px; }
 
 /* ---------- Empty states ---------- */
-/* ---------- Empty states ---------- */
 .empty-state {
   min-height: 440px; display: grid; place-items: center;
   border: 1px dashed var(--border); border-radius: var(--r-lg);
@@ -133,7 +132,6 @@ button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 }
 
 
-/* ---------- Overlay / modal / wizard ---------- */
 /* ---------- Overlay / modal / wizard ---------- */
 .overlay {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
@@ -158,7 +156,6 @@ button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
   padding: 16px 24px; border-top: 1px solid var(--border-soft);
   display: flex; align-items: center; justify-content: flex-end; gap: 10px;
 }
-.modal-foot .foot-left { margin-right: auto; }
 
 /* wizard step indicator */
 .wizard-steps { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
@@ -229,8 +226,6 @@ button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
   .job-entry-labels { display: none; }
   .job-entry-row { grid-template-columns: 1fr; gap: 9px; }
 }
-.fetch-row { display: flex; gap: 8px; }
-.fetch-row input { flex: 1; }
 .hint { color: var(--text-faint); font-size: 12.5px; margin: 0; }
 .form-msg { margin-right: auto; color: var(--text-faint); font-size: 12.5px; }
 .form-msg.err { color: var(--error); }
@@ -263,7 +258,6 @@ button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 
 
 /* ---------- Toast ---------- */
-/* ---------- Toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: max(20px, calc(var(--sai-b) + 8px));
   transform: translateX(-50%) translateY(18px); opacity: 0; pointer-events: none;
@@ -290,7 +284,6 @@ button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
     flex-direction: column-reverse; align-items: stretch;
   }
   /* margin-right: auto does nothing once the footer is a column. */
-  .modal-foot .foot-left { margin-right: 0; }
 
   /* The step names can't fit, so the indicator becomes a dot rail. The active
      step's name is already repeated by .wizard-title right below it. */

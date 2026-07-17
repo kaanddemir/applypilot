@@ -3,7 +3,6 @@ utility endpoints. All AI calls happen in the browser (cloud providers with a
 user key, or local WebLLM), so the backend is stateless and needs no API key.
 
 Endpoints:
-- POST /api/fetch-job         fetch + clean a posting URL
 - POST /api/parse-profile-file extract text from an uploaded .txt/.pdf/.docx
 - GET  /api/prompt-config      shared prompt templates for the browser providers
 
@@ -15,16 +14,11 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 import prompts
-from fetcher import FetchError, fetch_job_posting
-
-load_dotenv()
 
 app = FastAPI(title="ApplyPilot")
 
@@ -37,12 +31,6 @@ app.add_middleware(
 )
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-
-
-# --- Request models --------------------------------------------------------
-
-class FetchJobRequest(BaseModel):
-    url: str
 
 
 # --- Helpers ---------------------------------------------------------------
@@ -91,16 +79,6 @@ async def _read_profile_upload(file: UploadFile) -> tuple[str, str]:
 
 
 # --- Endpoints -------------------------------------------------------------
-
-@app.post("/api/fetch-job")
-def fetch_job(req: FetchJobRequest):
-    try:
-        text = fetch_job_posting(req.url)
-    except FetchError as exc:
-        # Not a 500: the URL just wasn't usable. The UI falls back to paste.
-        return {"text": "", "error": str(exc)}
-    return {"text": text}
-
 
 @app.post("/api/parse-profile-file")
 async def parse_profile_file(file: UploadFile = File(...)):

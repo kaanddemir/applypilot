@@ -43,7 +43,7 @@ The app is designed for local use. Your profile, applications, chats, provider k
 ## Current Limitations
 - **Single-User Focus**: The app is intended for local personal use, not shared public deployment.
 - **Browser Storage**: Clearing browser storage clears application data.
-- **Job URL Fetching**: Some job sites require JavaScript or login; paste the job description manually when fetching fails.
+- **Manual Job Descriptions**: Paste the posting text when you want a deeper AI review or cover letter.
 - **Local AI Performance**: Local model speed and quality depend on browser, hardware, and selected model.
 
 ## Tech Stack
@@ -87,7 +87,6 @@ Requires Python 3.10+.
 ApplyPilot/
 ├── backend/
 │   ├── app.py                # FastAPI app, static serving, and API endpoints
-│   ├── fetcher.py            # Job-posting URL fetch and content extraction
 │   ├── prompts.py            # Shared AI persona and task prompts
 │   └── requirements.txt      # Python dependencies
 ├── frontend/

@@ -8,7 +8,6 @@
 .settings-field { display: grid; gap: 6px; margin-top: 14px; }
 .settings-field label { color: var(--text-muted); font-size: 12.5px; font-weight: 600; }
 .settings-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.settings-card .provider-status { margin-top: 14px; }
 .settings-head-icon {
   color: var(--text-faint);
   flex-shrink: 0;
@@ -20,21 +19,6 @@
   display: flex;
   align-items: center;
   gap: 16px;
-}
-.cv-head-icon-box {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--text-muted);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-}
-.cv-head-icon-box svg {
-  width: 20px;
-  height: 20px;
 }
 .cv-head-text {
   flex: 1;
@@ -172,7 +156,6 @@
 .cv-modal-preview {
   max-height: 520px;
 }
-.settings-actions { display: flex; gap: 10px; margin-top: 20px; }
 
 /* Redesigned Empty CV Card (Setup details style) */
 .cv-empty-card {
@@ -228,7 +211,6 @@
 
 
 /* ---------- AI engine settings extras ---------- */
-.choice-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .engine-config { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
 .key-row {
   display: flex;
@@ -288,18 +270,6 @@
 .local-model-row .select {
   flex: 1;
   min-width: 0;
-}
-.local-load-btn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  height: 40px;
-  padding: 0 18px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: var(--r-sm);
 }
 .local-icon-btn {
   flex-shrink: 0;
@@ -421,7 +391,6 @@
 }
 
 
-/* ---------- Profile CV Summary Card ---------- */
 /* Profile CV Summary Card */
 .cv-summary-card {
   display: flex;
@@ -486,7 +455,6 @@
 }
 @media (max-width: 640px) {
   .settings-row-2col { grid-template-columns: 1fr; }
-  .choice-grid-4 { grid-template-columns: 1fr; }
   .cv-preview { max-height: 60vh; padding: 20px; }
   /* Matches the full-bleed modal in base.css, which .modal.large-modal would
      otherwise outrank on specificity. */

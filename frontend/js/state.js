@@ -12,8 +12,7 @@ export const $ = (id) => document.getElementById(id);
 export function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 // Applications carry a human-readable id (AP-8K2P-9QZ4) because it is exported
-// to Excel and read by people. Crockford's alphabet: no I/L/O/U, so the id
-// survives being read aloud or retyped without 0/O and 1/I mixups.
+// to Excel and read by people. Crockford's alphabet avoids ambiguous letters.
 const ID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const APP_ID_RE = /^AP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
@@ -25,15 +24,6 @@ function idFromBytes(bytes) {
   return "AP-" + out.slice(0, 4) + "-" + out.slice(4, 8);
 }
 
-function fnv1a(str, seed) {
-  let h = seed >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
-
 export function appId() {
   const bytes = new Uint8Array(5);
   (globalThis.crypto?.getRandomValues)
@@ -42,16 +32,9 @@ export function appId() {
   return idFromBytes(bytes);
 }
 
-// Legacy ids (base36 timestamp + random) map to a new id deterministically, so
-// a record keeps the same identity across the rename: chat sessions still find
-// their application, and workbooks exported before the change still match.
-export function canonicalAppId(raw) {
+function normalizeAppId(raw) {
   const value = String(raw || "").trim();
-  if (!value) return appId();
-  if (APP_ID_RE.test(value)) return value;
-  const h1 = fnv1a(value, 0x811c9dc5);
-  const h2 = fnv1a(value, 0x9e3779b9);
-  return idFromBytes([h1 >>> 24, (h1 >>> 16) & 255, (h1 >>> 8) & 255, h1 & 255, h2 & 255]);
+  return APP_ID_RE.test(value) ? value : appId();
 }
 export function esc(s) {
   const d = document.createElement("div");
@@ -62,33 +45,19 @@ export function esc(s) {
 export function normalizeApps(items) {
   if (!Array.isArray(items)) return [];
   return items.map((a) => {
-    const legacyUrls = Array.isArray(a.jobUrls) && a.jobUrls.length ? a.jobUrls : [a.jobUrl];
-    const legacySources = Array.isArray(a.sources) ? a.sources : [];
-    const jobSources = (Array.isArray(a.jobSources) ? a.jobSources : legacyUrls.map((url, index) => ({
-      url,
-      source: legacySources[index] || (index === 0 ? a.source : ""),
-    })))
+    const jobSources = (Array.isArray(a.jobSources) ? a.jobSources : [])
       .map((entry) => ({
         url: String(entry?.url || "").trim(),
         source: String(entry?.source || "").trim(),
       }))
       .filter((entry) => entry.url || entry.source);
-    const jobUrls = jobSources.map((entry) => entry.url).filter(Boolean);
-    const sources = jobSources.map((entry) => entry.source).filter(Boolean);
     return ({
-      id: canonicalAppId(a.id),
+      id: normalizeAppId(a.id),
       company: a.company || "",
       role: a.role || "",
-      // Keep jobUrl as the primary URL for older saved data and features that
-      // fetch/open one posting, while jobUrls stores every source link.
-      jobUrl: jobUrls[0] || "",
-      jobUrls,
-      source: sources[0] || "",
-      sources,
       jobSources,
       status: STATUSES.includes(a.status) ? a.status : "Saved",
       appliedAt: a.appliedAt || "",
-      nextAction: a.nextAction || "",
       notes: a.notes || "",
       jobText: a.jobText || "",
       matchAnalysis: a.matchAnalysis || null,
@@ -102,7 +71,7 @@ export function normalizeApps(items) {
 function applicationIdentityKeys(app) {
   const keys = [];
   if (app.id) keys.push("id:" + String(app.id).trim());
-  const urls = (app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []))
+  const urls = app.jobSources.map((entry) => entry.url)
     .map((value) => {
       try {
         const url = new URL(String(value).trim());
@@ -136,24 +105,21 @@ function applicationIdentityKeys(app) {
 
 export function mergeUniqueApplications(existing, imported) {
   const seen = new Set();
-  const applications = [];
-  let removedExisting = 0;
+  const applications = existing.slice();
   let skipped = 0;
   let added = 0;
-  const add = (app, fromImport) => {
+  existing.forEach((app) => applicationIdentityKeys(app).forEach((key) => seen.add(key)));
+  imported.forEach((app) => {
     const keys = applicationIdentityKeys(app);
     if (keys.some((key) => seen.has(key))) {
-      if (fromImport) skipped++;
-      else removedExisting++;
+      skipped++;
       return;
     }
     keys.forEach((key) => seen.add(key));
     applications.push(app);
-    if (fromImport) added++;
-  };
-  existing.forEach((app) => add(app, false));
-  imported.forEach((app) => add(app, true));
-  return { applications, added, skipped, removedExisting };
+    added++;
+  });
+  return { applications, added, skipped };
 }
 
 export function normalizeSessions(items) {
@@ -167,9 +133,7 @@ export function normalizeSessions(items) {
     title: s.title || "Assistant",
     createdAt: s.createdAt || Date.now(),
     thread: Array.isArray(s.thread) ? s.thread : [],
-    // Mapped through the same function as the applications, so a session
-    // attached before the id rename still points at its record.
-    contextAppId: s.contextAppId ? canonicalAppId(s.contextAppId) : "",
+    contextAppId: s.contextAppId || "",
   }));
 }
 
@@ -197,11 +161,7 @@ export const state = {
 };
 
 // Populate collections now that `state` exists (normalizeSessions references it).
-// Also repair duplicate rows left by older versions that appended every import.
-const storedApplications = normalizeApps(store.getJSON(LS.applications, []));
-const initialApplications = mergeUniqueApplications(storedApplications, []);
-state.applications = initialApplications.applications;
-if (initialApplications.removedExisting) store.setJSON(LS.applications, state.applications);
+state.applications = normalizeApps(store.getJSON(LS.applications, []));
 state.chatSessions = normalizeSessions(store.getJSON(LS.sessions, []));
 
 // Restore the persisted view/selection, falling back sanely if it's stale.
@@ -295,9 +255,6 @@ export function sourceFromUrl(url) {
 export function isHttpUrl(url) {
   return /^https?:\/\/\S+/i.test((url || "").trim());
 }
-export function initials(company) {
-  return (company || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-}
 let toastTimer = null;
 export function toast(text) {
   const el = $("toast");
@@ -313,7 +270,7 @@ export function filteredApps() {
   const q = state.search.trim().toLowerCase();
   let list = state.applications.filter((a) => state.filter === "All" || a.status === state.filter);
   if (q) {
-    list = list.filter((a) => [a.company, a.role, ...(a.sources || []), a.source, a.notes, a.nextAction].join(" ").toLowerCase().includes(q));
+    list = list.filter((a) => [a.company, a.role, ...a.jobSources.map((entry) => entry.source), a.notes].join(" ").toLowerCase().includes(q));
   }
   const copy = list.slice();
   copy.sort((a, b) => {

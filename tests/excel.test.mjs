@@ -24,32 +24,13 @@ URL.createObjectURL = (blob) => {
 URL.revokeObjectURL = () => {};
 
 const { exportExcelTable, readExcelApplications } = await import("../frontend/js/excel.js");
+const { normalizeApps } = await import("../frontend/js/state.js");
 
 function makeWorkbook(apps) {
   exportedBlob = null;
   exportExcelTable(apps);
   assert.ok(exportedBlob instanceof Blob, "export should produce an Excel blob");
   return exportedBlob;
-}
-
-function replaceBytes(buffer, from, to) {
-  assert.equal(from.length, to.length, "replacement text must have the same byte length");
-  const bytes = new Uint8Array(buffer.slice(0));
-  const needle = new TextEncoder().encode(from);
-  const replacement = new TextEncoder().encode(to);
-  let replacements = 0;
-  for (let i = 0; i <= bytes.length - needle.length; i++) {
-    let matches = true;
-    for (let j = 0; j < needle.length; j++) {
-      if (bytes[i + j] !== needle[j]) { matches = false; break; }
-    }
-    if (!matches) continue;
-    bytes.set(replacement, i);
-    replacements++;
-    i += needle.length - 1;
-  }
-  assert.ok(replacements > 0, `expected to find ${from} in workbook`);
-  return bytes;
 }
 
 test("job descriptions survive Excel export and import", async () => {
@@ -63,7 +44,7 @@ test("job descriptions survive Excel export and import", async () => {
   const expectedJobText = jobText.replace(/[\u0000\u000b\u001f]/g, "");
   const workbook = makeWorkbook([
     {
-      id: "app-special",
+      id: "AP-1234-5678",
       company: "Örnek & Şirket",
       role: "Senior Developer",
       status: "Applied",
@@ -100,6 +81,7 @@ test("job descriptions survive Excel export and import", async () => {
   const imported = await readExcelApplications(workbook);
   assert.equal(imported.length, 2);
   assert.equal(imported[0].company, "Örnek & Şirket");
+  assert.equal(imported[0].id, "AP-1234-5678");
   assert.equal(imported[0].role, "Senior Developer");
   assert.equal(imported[0].status, "Applied");
   assert.equal(imported[0].notes, "Not <önemli> & takip et");
@@ -115,24 +97,26 @@ test("job descriptions survive Excel export and import", async () => {
   assert.equal(imported[1].jobText, "");
 });
 
-test("older workbooks without a Job Description header still import", async () => {
-  const workbook = makeWorkbook([{
+test("application normalization emits only the current schema", () => {
+  const [app] = normalizeApps([{
     id: "legacy-app",
-    company: "Legacy Co",
+    company: "Current Co",
     role: "Designer",
-    status: "Saved",
-    notes: "Existing notes",
-    jobText: "This column should be ignored by the legacy-header fixture",
+    status: "Unknown",
+    jobSources: [{ source: "Company site", url: "https://example.com/job" }],
+    jobUrl: "https://legacy.example/job",
+    jobUrls: ["https://legacy.example/job"],
+    source: "Legacy source",
+    sources: ["Legacy source"],
+    nextAction: "Legacy action",
   }]);
-  const legacyBytes = replaceBytes(
-    await workbook.arrayBuffer(),
-    "Job Description",
-    "Legacy Field 01",
-  );
-  const imported = await readExcelApplications(new Blob([legacyBytes]));
 
-  assert.equal(imported.length, 1);
-  assert.equal(imported[0].company, "Legacy Co");
-  assert.equal(imported[0].notes, "Existing notes");
-  assert.equal(imported[0].jobText, "");
+  assert.match(app.id, /^AP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+  assert.equal(app.status, "Saved");
+  assert.deepEqual(app.jobSources, [
+    { source: "Company site", url: "https://example.com/job" },
+  ]);
+  for (const removed of ["jobUrl", "jobUrls", "source", "sources", "nextAction"]) {
+    assert.equal(Object.hasOwn(app, removed), false, `${removed} should not be emitted`);
+  }
 });

@@ -1,10 +1,9 @@
-// Kanban board + application detail view, drag/drop, and the non-chat AI actions
-// (fetch job text, run match analysis).
+// Kanban board + application detail view, drag/drop, and match analysis.
 "use strict";
 
 import {
   state, $, esc, STATUSES, BOARD_STATUSES, filteredApps, selectedApp,
-  formatDate, sourceFromUrl, isHttpUrl, setChatContext, touch, persistApps, toast,
+  formatDate, isHttpUrl, setChatContext, touch, persistApps, toast,
   mergeUniqueApplications, setSelectMode, toggleSelected, pruneSelection,
 } from "./state.js";
 import { I } from "./icons.js";
@@ -130,7 +129,6 @@ async function importExcelFile(file) {
     if (result.added) messages.push("Imported " + result.added + " new application" + (result.added === 1 ? "" : "s"));
     else messages.push("No new applications to import");
     if (result.skipped) messages.push("skipped " + result.skipped + " duplicate" + (result.skipped === 1 ? "" : "s"));
-    if (result.removedExisting) messages.push("removed " + result.removedExisting + " existing duplicate" + (result.removedExisting === 1 ? "" : "s"));
     toast(messages.join("; "));
   } catch (err) {
     toast(err.message || "Could not read that file.");
@@ -560,8 +558,8 @@ function jobDescriptionPanel(app) {
 }
 
 function detailsPanel(app) {
-  const jobUrls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
-  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
+  const jobUrls = app.jobSources.map((entry) => entry.url).filter(Boolean);
+  const sources = app.jobSources.map((entry) => entry.source).filter(Boolean);
   const urlHtml = jobUrls.length ? '<div class="detail-url-list">' + jobUrls.map((url) => {
     let displayUrl = url;
     try { displayUrl = new URL(url).hostname.replace(/^www\./, ""); } catch (_) { /* show the entered value */ }
@@ -590,7 +588,7 @@ function detailsPanel(app) {
 function quickActionsPanel(app) {
   const a = app.matchAnalysis;
   const analyzed = !!a;
-  const canOpen = isHttpUrl(app.jobUrl);
+  const canOpen = isHttpUrl(app.jobSources[0]?.url);
   // Analysis can run on whatever job info exists (title/company/notes and/or a
   // pasted description); only truly-empty applications block it.
   const hasUsableJobInfo = !!(app.jobText.trim() || app.company || app.role || app.notes);
@@ -615,23 +613,11 @@ function headerStatusSelect(app) {
     STATUSES.map((s) => '<option value="' + esc(s) + '"' + (s === app.status ? " selected" : "") + ">" + esc(s) + "</option>").join("") +
   "</select>";
 }
-function statusClass(status) {
-  const normalized = String(status || "").toLowerCase();
-  if (normalized === "offer") return "offer";
-  if (normalized === "interview") return "interview";
-  if (normalized === "applied") return "applied";
-  if (normalized === "rejected") return "rejected";
-  if (normalized === "archived") return "archived";
-  return "saved";
-}
-
-
 function wireDetailActions(app) {
   const status = document.querySelector(".js-status");
   if (status) status.addEventListener("change", () => { app.status = status.value; touch(app); persistApps(); renderAll(); });
   const openBtn = document.querySelector(".js-open");
   if (openBtn) openBtn.addEventListener("click", () => openPosting(app));
-  document.querySelectorAll(".js-fetch").forEach((btn) => btn.addEventListener("click", () => fetchJobText(app)));
   const jobInput = document.querySelector("#jobTextInput");
   if (jobInput) {
     jobInput.addEventListener("input", () => {
@@ -651,8 +637,9 @@ function wireDetailActions(app) {
 }
 
 function openPosting(app) {
-  if (!app.jobUrl) return;
-  window.open(app.jobUrl, "_blank", "noopener,noreferrer");
+  const url = app.jobSources[0]?.url;
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export function requireProfile() {
@@ -663,41 +650,16 @@ export function requireProfile() {
   return true;
 }
 
-async function fetchJobText(app) {
-  if (!app.jobUrl) return;
-  const btn = document.querySelector(".js-fetch");
-  if (btn) btn.textContent = "Fetching...";
-  try {
-    const apiBase = location.port === "8000" ? "" : "http://localhost:8000";
-    const resp = await fetch(apiBase + "/api/fetch-job", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: app.jobUrl }),
-    });
-    const data = await resp.json();
-    if (data.error || !data.text) throw new Error(data.error || "Could not read that page.");
-    app.jobText = data.text;
-    if (!app.source) app.source = sourceFromUrl(app.jobUrl);
-    touch(app);
-    persistApps();
-    toast("Job posting text fetched");
-  } catch (err) {
-    toast(err.message || "Fetch failed. Paste the text manually.");
-  } finally {
-    renderAll();
-  }
-}
-
 // Assemble everything known about the job into one block for the analyzer, so
 // analysis works from the entered fields even when there is no full description.
 function buildJobContext(app) {
   const parts = [];
   if (app.company) parts.push("Company: " + app.company);
   if (app.role) parts.push("Role / title: " + app.role);
-  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
-  sources.forEach((source, index) => parts.push("Source " + (index + 1) + ": " + source));
-  const jobUrls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
-  jobUrls.forEach((url, index) => parts.push("Job URL " + (index + 1) + ": " + url));
+  app.jobSources.forEach((entry, index) => {
+    if (entry.source) parts.push("Source " + (index + 1) + ": " + entry.source);
+    if (entry.url) parts.push("Job URL " + (index + 1) + ": " + entry.url);
+  });
   if (app.notes && app.notes.trim()) parts.push("User notes: " + app.notes.trim());
   const desc = (app.jobText || "").trim();
   parts.push("\nJob description:\n" + (desc || "(No full description provided. Base your assessment on the fields above and note that it relies on limited job information.)"));

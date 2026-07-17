@@ -75,12 +75,8 @@ export function openApplicationWizard(app) {
   const draft = {
     company: app?.company || "",
     role: app?.role || "",
-    jobSources: (app?.jobSources?.length
-      ? app.jobSources
-      : (app?.jobUrls?.length ? app.jobUrls : [app?.jobUrl || ""]).map((url, index) => ({
-        url,
-        source: app?.sources?.[index] || (index === 0 ? app?.source || "" : ""),
-      }))).map((entry) => ({ ...entry })),
+    jobSources: (app?.jobSources?.length ? app.jobSources : [{ url: "", source: "" }])
+      .map((entry) => ({ ...entry })),
     status: app?.status || "Saved",
     appliedAt: app?.appliedAt || "",
     notes: app?.notes || "",
@@ -209,16 +205,11 @@ export function openApplicationWizard(app) {
       })
       .filter((entry) => entry.url || entry.source)
       .filter((entry, index, entries) => entries.findIndex((item) => item.url === entry.url && item.source === entry.source) === index);
-    target.jobUrls = target.jobSources.map((entry) => entry.url).filter(Boolean);
-    target.sources = target.jobSources.map((entry) => entry.source).filter(Boolean);
-    target.jobUrl = target.jobUrls[0] || "";
-    target.source = target.sources[0] || sourceFromUrl(target.jobUrl);
     target.status = draft.status;
     target.appliedAt = draft.appliedAt;
-    target.nextAction = "";
     target.notes = clampText(draft.notes, LIMITS.notes);
-    // Preserve any job description already pasted/fetched (it is edited in the
-    // detail view, not in this wizard); draft.jobText carries the existing value.
+    // Preserve any job description already pasted; draft.jobText carries the
+    // existing value while editing.
     target.jobText = clampText(draft.jobText, LIMITS.jobText);
     touch(target);
     if (!app) state.applications.unshift(target);

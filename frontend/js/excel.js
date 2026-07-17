@@ -20,13 +20,7 @@ const BASE_EXPORT_COLUMNS = [
 ];
 
 function applicationSources(app) {
-  if (Array.isArray(app.jobSources) && app.jobSources.length) return app.jobSources;
-  const urls = app.jobUrls?.length ? app.jobUrls : (app.jobUrl ? [app.jobUrl] : []);
-  const sources = app.sources?.length ? app.sources : (app.source ? [app.source] : []);
-  return Array.from({ length: Math.max(urls.length, sources.length) }, (_, index) => ({
-    url: urls[index] || "",
-    source: sources[index] || "",
-  }));
+  return Array.isArray(app.jobSources) ? app.jobSources : [];
 }
 
 function exportColumns(apps) {
@@ -304,16 +298,9 @@ export async function readExcelApplications(file) {
       const count = Math.max(sourceColumns.length, urlColumns.length);
       const pairs = [];
       for (let index = 0; index < count; index++) {
-        // Older exports stored several values on separate lines in one cell.
-        // Splitting here keeps those files compatible with the new one-link-per-cell layout.
-        const sources = cell(row, sourceColumns[index]?.index ?? -1).split(/\r?\n/);
-        const urls = cell(row, urlColumns[index]?.index ?? -1).split(/\r?\n/);
-        const lineCount = Math.max(sources.length, urls.length);
-        for (let line = 0; line < lineCount; line++) {
-          const source = (sources[line] || "").trim();
-          const url = (urls[line] || "").trim();
-          if (source || url) pairs.push({ source, url });
-        }
+        const source = cell(row, sourceColumns[index]?.index ?? -1);
+        const url = cell(row, urlColumns[index]?.index ?? -1);
+        if (source || url) pairs.push({ source, url });
       }
       return pairs;
     };
