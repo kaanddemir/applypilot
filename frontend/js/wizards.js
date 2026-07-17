@@ -3,7 +3,7 @@
 "use strict";
 
 import {
-  state, $, esc, uid, STATUSES, sourceFromUrl, touch, persistApps, persistProfile, toast,
+  state, $, esc, appId, STATUSES, sourceFromUrl, touch, persistApps, persistProfile, toast,
 } from "./state.js";
 import { I } from "./icons.js";
 import { renderAll } from "./render.js";
@@ -199,7 +199,7 @@ export function openApplicationWizard(app) {
     const company = clampText(draft.company, LIMITS.company);
     const role = clampText(draft.role, LIMITS.role);
     if (!company || !role) { step = 0; error = "Company and role are required."; render(); return; }
-    const target = app || { id: uid(), createdAt: Date.now(), matchAnalysis: null, coverLetter: "" };
+    const target = app || { id: appId(), createdAt: Date.now(), matchAnalysis: null, coverLetter: "" };
     target.company = company;
     target.role = role;
     target.jobSources = draft.jobSources

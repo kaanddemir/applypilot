@@ -16,7 +16,7 @@ const BASE_EXPORT_COLUMNS = [
   { header: "Job Description", width: 72, get: (a) => a.jobText || "" },
   { header: "Created", width: 14, get: (a) => (a.createdAt ? formatDate(a.createdAt) : "") },
   { header: "Last Updated", width: 14, get: (a) => (a.updatedAt ? formatDate(a.updatedAt) : "") },
-  { header: "Application ID", width: 24, get: (a) => a.id || "" },
+  { header: "Application ID", width: 18, get: (a) => a.id || "" },
 ];
 
 function applicationSources(app) {

@@ -10,6 +10,49 @@ export const BOARD_STATUSES = ["Saved", "Applied", "Interview", "Offer", "Reject
 export const $ = (id) => document.getElementById(id);
 
 export function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+// Applications carry a human-readable id (AP-8K2P-9QZ4) because it is exported
+// to Excel and read by people. Crockford's alphabet: no I/L/O/U, so the id
+// survives being read aloud or retyped without 0/O and 1/I mixups.
+const ID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const APP_ID_RE = /^AP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
+
+function idFromBytes(bytes) {
+  let bits = "";
+  for (let i = 0; i < 5; i++) bits += (bytes[i] & 255).toString(2).padStart(8, "0");
+  let out = "";
+  for (let i = 0; i < 40; i += 5) out += ID_ALPHABET[parseInt(bits.slice(i, i + 5), 2)];
+  return "AP-" + out.slice(0, 4) + "-" + out.slice(4, 8);
+}
+
+function fnv1a(str, seed) {
+  let h = seed >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+export function appId() {
+  const bytes = new Uint8Array(5);
+  (globalThis.crypto?.getRandomValues)
+    ? globalThis.crypto.getRandomValues(bytes)
+    : bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+  return idFromBytes(bytes);
+}
+
+// Legacy ids (base36 timestamp + random) map to a new id deterministically, so
+// a record keeps the same identity across the rename: chat sessions still find
+// their application, and workbooks exported before the change still match.
+export function canonicalAppId(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return appId();
+  if (APP_ID_RE.test(value)) return value;
+  const h1 = fnv1a(value, 0x811c9dc5);
+  const h2 = fnv1a(value, 0x9e3779b9);
+  return idFromBytes([h1 >>> 24, (h1 >>> 16) & 255, (h1 >>> 8) & 255, h1 & 255, h2 & 255]);
+}
 export function esc(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
@@ -33,7 +76,7 @@ export function normalizeApps(items) {
     const jobUrls = jobSources.map((entry) => entry.url).filter(Boolean);
     const sources = jobSources.map((entry) => entry.source).filter(Boolean);
     return ({
-      id: a.id || uid(),
+      id: canonicalAppId(a.id),
       company: a.company || "",
       role: a.role || "",
       // Keep jobUrl as the primary URL for older saved data and features that
@@ -74,9 +117,19 @@ function applicationIdentityKeys(app) {
   urls.forEach((url) => keys.push("url:" + url));
   if (!urls.length) {
     const text = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    // Excel writes dates back as display text ("Jul 17, 2026") while saved
+    // records hold "2026-07-17", so compare a canonical form or the same
+    // application re-imported would look like a new one.
+    const day = (value) => {
+      const raw = text(value);
+      if (!raw) return "";
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw;
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    };
     const company = text(app.company);
     const role = text(app.role);
-    if (company || role) keys.push("record:" + company + "|" + role + "|" + text(app.appliedAt));
+    if (company || role) keys.push("record:" + company + "|" + role + "|" + day(app.appliedAt));
   }
   return keys;
 }
@@ -114,7 +167,9 @@ export function normalizeSessions(items) {
     title: s.title || "Assistant",
     createdAt: s.createdAt || Date.now(),
     thread: Array.isArray(s.thread) ? s.thread : [],
-    contextAppId: s.contextAppId || "",
+    // Mapped through the same function as the applications, so a session
+    // attached before the id rename still points at its record.
+    contextAppId: s.contextAppId ? canonicalAppId(s.contextAppId) : "",
   }));
 }
 
