@@ -9,7 +9,7 @@ import {
 import { I } from "./icons.js";
 import { analyze } from "./ai.js";
 import { renderAll } from "./render.js";
-import { openApplicationWizard, openCvWizard, openDeleteModal, openDeleteApplications } from "./wizards.js?v=3";
+import { openApplicationWizard, openCvWizard, openDeleteModal, openDeleteApplications } from "./wizards.js";
 import { runCover } from "./chat.js";
 import { exportExcelTable, readExcelApplications } from "./excel.js";
 

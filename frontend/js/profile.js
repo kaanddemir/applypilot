@@ -5,7 +5,7 @@
 import { state, $, esc, persistProfile, toast } from "./state.js";
 import { I } from "./icons.js";
 import { renderAll } from "./render.js";
-import { openCvWizard, openModal, closeModal } from "./wizards.js?v=3";
+import { openCvWizard, openModal, closeModal } from "./wizards.js";
 import {
   PROVIDERS, setProvider, getKey, setKey, hasKey, getModel, setModel, validateKey,
   localModels, currentModelId, setModelId, ensureLocalEngine, unloadLocalEngine,

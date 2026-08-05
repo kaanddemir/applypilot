@@ -1,34 +1,35 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
 # Python
+.venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 .Python
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Test and tooling caches
+# Tooling caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
-
-# Environment and local config
-.env
-.env.*
-!.env.example
-
-# OS and editor files
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
+node_modules/
 
 # Logs
 *.log
 logs/
-.applypilot.pid
