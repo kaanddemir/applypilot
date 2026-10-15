@@ -1,154 +1,133 @@
-# ApplyPilot
+# ApplyPilot 2.0.0
 
 <div align="center">
   <img src="frontend/assets/logo.png" alt="ApplyPilot Logo" width="120" />
-</div>
 
-<div align="center">
-
-**A job application tracker with AI-assisted CV review, cover-letter drafting, and focused job-search chat.**
+**A job application tracker with evidence-based AI job fit analysis**
 
 </div>
 
----
+## What is ApplyPilot?
 
-## Overview
+ApplyPilot keeps your job search in one place: applications on a Kanban board or table, the job description and notes for each one, a single saved CV, and an optional Gemini comparison of that CV against a posting.
 
-ApplyPilot keeps the job-search workflow in one place: a Kanban board of applications, an honest match analysis of your CV against a specific posting, a cover-letter draft grounded in your real experience, and a chat that can have any one application attached as context. Everything you enter lives in your browser — the applications, the CV, the chats, and the provider keys.
+It is a single-user local application. Data stays in your browser and the Gemini key stays on the local server. There are no user accounts, so it is not intended for public deployment.
 
-The AI runs in the browser too, which is the part that shapes the rest of the design. Cloud calls go straight from the page to `api.anthropic.com`, `api.openai.com`, or `generativelanguage.googleapis.com` with your own key, and the local option runs a WebLLM model on WebGPU with no network at all. The backend never sees a key and never sees a CV: it parses uploaded files, serves one shared prompt configuration so every engine behaves the same, and serves the frontend.
+## What It Can Do
 
-Built with FastAPI, vanilla browser UI assets, three cloud providers behind one interface, and WebLLM for the local engine.
+- Tracks applications across `Saved`, `Applied`, `Interview`, `Offer`, `Rejected`, and `Archived`.
+- Offers a drag-and-drop Kanban board and a sortable Table with search, filtering, and multi-select.
+- Stores each application's details, source links, job description, and autosaved notes.
+- Keeps one CV, uploaded as `.txt`, `.pdf`, or `.docx` or pasted as text.
+- Compares the CV with a job description using Gemini and shows evidence for every requirement.
+- Imports and exports applications as `.xlsx`.
+- Supports Light, Dark, and System themes.
 
-## Core Features
+## How It Works
 
-- **Kanban Board**: Applications tracked across `Saved`, `Applied`, `Interview`, `Offer`, and `Rejected`, with drag-and-drop between columns. `Archived` exists as a status but stays off the board.
-- **Readable Application IDs**: Each application gets an `AP-8K2P-9QZ4` identifier from Crockford's alphabet, so ambiguous characters never appear in the spreadsheet a person reads.
-- **Match Analysis**: The model compares your profile against a posting and returns a structured verdict — met requirements with the evidence for each, gaps ranked by severity, ATS keywords present and missing, and ready-to-paste CV bullets traceable to real experience. No numeric score, and unmet hard requirements cap the verdict no matter how many nice-to-haves are met.
-- **Cover Letter Drafting**: Three to four paragraphs from your profile and the application's details, with bracket placeholders rather than guesses when the company or role is unknown.
-- **Chat with Attached Context**: Any application can be attached to a chat turn; a saved analysis is treated as authoritative rather than redone.
-- **Per-Turn Prompt Scoping**: One system prompt describes all three modes, but each turn is sent only the section it needs. Without that, small local models echo the analysis JSON schema into the conversation.
-- **Four Engines, One Interface**: Claude, ChatGPT, and Gemini with your own key, or a WebLLM model in the browser with no key. Keys are verified against the provider's own models endpoint before you rely on them.
-- **Dependency-Free Spreadsheets**: `.xlsx` export and import are written by hand against the file format — no library. Exports carry one column pair per job source, live hyperlinks, and the application ID, so a file that goes out and comes back matches itself.
-- **CV Parsing**: `.txt`, `.pdf`, and `.docx` uploaded to the one endpoint that reads files.
+1. Applications, the CV, and saved analyses are stored in browser `localStorage`.
+2. FastAPI serves the built frontend and two API routes: CV text extraction and job analysis.
+3. On **Analyze**, only the CV text and job description go to the local server, which calls Gemini with a server-side key.
+4. The server validates the structured response, checks every quoted excerpt against the source text, and derives the overall assessment from the validated requirements.
 
-## Current Limitations
+The analysis gives no percentage score or coaching. It checks textual support only and cannot confirm real-world competence or eligibility. Job descriptions and CVs may be English, Turkish, or mixed; the interface and generated text are English.
 
-- **Browser Storage Only**: There is no database and no sync. Clearing site data clears everything, and a second browser starts empty. Use the `.xlsx` export as the backup.
-- **Keys Sit in localStorage**: Cloud provider keys are stored in plain text in the browser, which is worth knowing on a shared computer. The Local engine needs no key at all.
-- **Single-User, Loopback Only**: The server is meant for `localhost`. CORS is wide open and there is no authentication, so it should not be exposed on a network.
-- **First Local Run Is Not Offline**: WebLLM's runtime is imported from `esm.run` and the model weights download on first load. After that, local inference is genuinely local.
-- **WebGPU Required for Local**: Chrome or Edge. Speed and answer quality depend on the machine and the chosen model.
-- **Manual Job Descriptions**: Postings are pasted in, never scraped. With only a title and company, the analysis still runs but says it is working from limited information.
-- **Import Needs `DecompressionStream`**: Browsers without it can read only uncompressed `.xlsx`; the importer says so rather than failing quietly.
+## Technologies
 
-## Tech Stack
+- **Frontend:** HTML, CSS, TypeScript, Vite
+- **Backend:** Python, FastAPI, Uvicorn
+- **AI:** Google Gemini (server-side only)
+- **Documents:** pypdf, python-docx, dependency-free XLSX import/export
+- **Storage:** browser `localStorage`
+- **Tests:** Node test runner and Python `unittest`
 
-- **Backend**: [FastAPI](https://fastapi.tiangolo.com/), [Uvicorn](https://www.uvicorn.org/), [pypdf](https://github.com/py-pdf/pypdf), [python-docx](https://github.com/python-openxml/python-docx)
-- **Frontend**: Vanilla HTML, CSS, and JavaScript ES modules — no build step and no framework
-- **Cloud AI**: [Anthropic](https://docs.anthropic.com/), [OpenAI](https://platform.openai.com/docs), and [Google Gemini](https://ai.google.dev/) APIs, called directly from the browser
-- **Local AI**: [WebLLM](https://github.com/mlc-ai/web-llm) on WebGPU
-- **Storage**: Browser `localStorage`
-- **Testing**: [`node:test`](https://nodejs.org/api/test.html)
+## Setup
 
-## Getting Started
+Requirements:
 
-Requires Python 3.10+. An API key is optional: the Local engine needs none, and the board, spreadsheets, and profile work with no AI configured at all.
+- Python 3.10+
+- Node.js 20.19+
+- A Gemini API key (optional, only for AI analysis)
 
-**1. Install.**
+Install backend dependencies:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r backend/requirements.txt
+cp -n backend/.env.example backend/.env
 ```
 
-**2. Add your CV.** Open **Profile / CV** and either upload a `.txt`, `.pdf`, or `.docx`, or paste the text. Everything the AI does is grounded in this.
+To enable AI analysis, set the key in `backend/.env`. Never put it in frontend code or a `VITE_*` variable.
 
-**3. Pick an engine.** In **Profile → AI engine**, either choose Claude, ChatGPT, or Gemini and paste your key (it is checked against the provider before it is trusted), or choose **Local** and load a WebLLM model — no key, and after the first download, no network.
+For an existing installation, rerun `pip install -r backend/requirements.txt` to apply the required document-parser security updates. Create `backend/.env` only if it does not already exist; preserve existing credentials and settings.
 
-### Run
+```dotenv
+GEMINI_API_KEY=your-key-here
+```
+
+Build the frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+Start the app from the repository root:
 
 ```bash
 python run.py
 ```
 
-It checks the setup before starting and prints where to open the app:
+The app opens at `http://localhost:8000`. Use `PORT=9000 python run.py` for another port. After frontend changes, run `npm run build` again.
 
-```text
-  ApplyPilot
-  ────────────────────────────────────────────
-  Open      http://localhost:8000
-  AI        in your browser, keys never reach this server
-  Data      browser localStorage
-  Stop      Ctrl+C
+For frontend development with hot reload, keep `python run.py` running and start `npm run dev` in `frontend/`, then open `http://127.0.0.1:5173`. If the backend uses another port, set `APPLYPILOT_BACKEND_URL` in `frontend/.env.local`.
+
+Basic checks:
+
+```bash
+cd frontend && npm run typecheck && npm test && npm run build
+cd .. && .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Ctrl+C stops it. Missing setup — a dependency, a port already taken — is reported before anything starts, with the command that fixes it. `.venv` does not have to be activated first: when it exists, `run.py` switches to that interpreter itself and says so.
-
-### Configuration
-
-Three environment variables, all optional: `PORT` (8000); `RELOAD` (`1` restarts the server when `backend/` changes — the frontend is static, so editing CSS or JS never needs it); `LOG_LEVEL` (`DEBUG` restores Uvicorn's startup notes and its per-request access log, which a single page load otherwise fills with static-file lines). Everything else — engine, model, and keys — is set in the UI.
+Tests use mock transports and synthetic data; they never call Gemini.
 
 ## Project Structure
 
 ```text
 ApplyPilot/
-├── backend/
-│   ├── app.py                # FastAPI app, static serving, and the two API endpoints
-│   ├── prompts.py            # The one system prompt: persona plus all three modes
-│   └── requirements.txt
+├── backend/             # FastAPI routes, Gemini client, validation, rate limits
 ├── frontend/
-│   ├── assets/logo.png
-│   ├── css/                  # base (theme, layout), app (board, chat), profile
-│   ├── js/                   # ai (four engines), board, chat, excel (xlsx by hand),
-│   │                         # profile, wizards, state, store, render, main, icons
-│   └── index.html            # The whole UI; views are switched in the DOM
-├── tests/                    # Excel round-trip and application normalization
-├── run.py                    # Entrypoint: python run.py, Ctrl+C stops it
-└── LICENSE
+│   ├── assets/          # logo and favicon
+│   ├── css/             # themes and styles
+│   └── src/             # TypeScript application
+├── tests/               # frontend and backend tests
+└── run.py               # local launcher
 ```
 
-## Data Storage
+## Data and Privacy
 
-There is no database and the backend stores nothing. Everything lives in `localStorage` under the `applypilot_*` namespace: applications, the profile text and the uploaded file's preview, chat sessions, the selected engine and per-provider model, the cloud provider keys, and UI state such as the board layout, filter, and sort.
-
-Where your data actually goes:
-
-- **To the backend**: only an uploaded CV file, and only to have its text extracted. It is parsed in memory, returned to the browser, and never written to disk.
-- **To a cloud provider**: your profile text, the job posting, and the conversation, sent by the browser directly to whichever provider you selected, using your key. Nothing routes through this server.
-- **To nowhere**: everything, when the Local engine is selected. Inference runs in the browser.
-
-Stopping the server does not touch any of it — it is in the browser, not in the process. Use **export to `.xlsx`** for a real backup.
-
-## API
-
-- `GET /` — the app (the frontend is mounted at the root, so any other path is a static file)
-- `POST /api/parse-profile-file` — `multipart/form-data`, field `file`: a `.txt`, `.pdf`, or `.docx` up to 10 MB. Returns `{ "filename": "...", "text": "..." }`. A scanned PDF with no selectable text is rejected with a message that says so rather than returning an empty string.
-- `GET /api/prompt-config` — `{ "system_prompt": "...", "analyze_framing": "..." }`. The `{user_profile}` slot is left unfilled; the browser fills it, which is how the profile stays out of this server.
-
-## Testing
-
-```bash
-node --test tests/*.test.mjs
-```
-
-The suite uses Node's built-in test runner against the frontend modules directly. There is no `package.json` and nothing to install — the browser code has no dependencies, so neither do its tests.
-
-## Runtime Notes
-
-- Static responses are sent with `Cache-Control: no-cache, must-revalidate`. Without it, `StaticFiles` sends no caching header at all and browsers apply heuristic freshness, which makes an edit to the JS or CSS appear to do nothing until a hard reload.
-- The full system prompt covers all three modes, so each turn is sent only its own section plus a mode-specific formatting footer. If the expected section markers are not found, the whole prompt is sent rather than a mangled one.
-- `<think>` blocks from reasoning models are stripped before the text reaches the UI.
-- Chat history is capped at 16 messages. The system prompt already embeds the whole CV, which on a 1.7B local model leaves little context for anything else.
-- A key is validated once per session against the provider's models endpoint, so a typo surfaces in Settings rather than as a failed analysis later.
-- Match analysis is asked for as strict JSON with no surrounding prose; the client parses it and renders the fields rather than showing raw model output.
+- All data lives in this browser profile. Clearing site data or switching browsers removes it.
+- Use one active editing tab. Application edits are not synchronized across tabs; concurrent edits can overwrite each other. In-flight analysis separately detects cross-tab storage changes and discards its result.
+- Use **Export to Excel** regularly to back up application tracking fields. Excel is not a full backup: it excludes the CV, original file, structured requirement evidence, and analysis fingerprints. Keep your original CV separately; imported analysis summaries are marked imported and require re-analysis.
+- Only CV text and the job description are sent to Google when you click **Analyze**. Tracking notes, company/title metadata, and source URLs are excluded.
+- Analysis uses `gemini-3.8-flash`, explicit low thinking, and a 16,384-token combined thinking/JSON ceiling. The ceiling is not a target; concise responses and server-derived summaries reduce generation. See `backend/.env.example` for supported configuration. Other models require compatibility review.
+- Each action makes one provider request, or at most two when job evidence needs repair. Both share a total deadline of at most 90 seconds; the browser stops waiting at 100 seconds. Repair requires at least 15 seconds remaining. Truncated or explicitly incomplete responses are never accepted or blindly retried.
+- Quotations are checked using NFC/whitespace tolerance while preserving case and punctuation. Conservative checks catch recognizable technology, negation, duration, proficiency, and credential conflicts. They do not prove every semantic judgment. Possible missing named qualifications are disclosed in the existing assessment text.
+- Results are discarded if the CV, description, application identity, or existing analysis changes while a request runs. Older results remain available; pre-fix fingerprints require re-analysis to be current.
+- Disconnects cancel local provider work where ASGI reports them; cancellation cannot guarantee Google stops already-started generation or billing. Rate and concurrency limits remain in memory per server process.
+- The server binds to `127.0.0.1`, validates Host headers, and rate-limits analysis requests. Limits and timeouts are documented in [backend/.env.example](backend/.env.example).
+- API requests with a browser Origin must match the serving origin or an explicitly configured CORS origin. CORS is not authentication. Alternate Uvicorn commands can override the loopback binding; keep this unauthenticated server local and use one worker because limits are per process.
+- Document uploads have byte, page, extracted-text, and DOCX expansion limits, but parsing runs in threads without a hard CPU/memory sandbox. A hostile PDF can still consume substantial resources. Open only CV files you trust.
+- Google Fonts is fetched when the page loads, independently of AI analysis; this discloses ordinary connection metadata to Google, not CV or application text.
+- Scanned PDFs without selectable text are not supported.
 
 ## License
 
-This project is open source and available under the [MIT License](LICENSE).
-
-## Footer
+The project is available under the [MIT License](LICENSE).
 
 <div align="center">
-  <p>Built by <a href="https://heykaan.dev">heykaan.dev</a></p>
+  <p>Built by <a href="https://heykaan.dev">heykaan.dev</a>.</p>
 </div>

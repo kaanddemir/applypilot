@@ -29,6 +29,8 @@ __pycache__/
 .coverage
 htmlcov/
 node_modules/
+frontend/dist/
+frontend/.test-dist/
 
 # Logs
 *.log

@@ -1,6 +1,7 @@
 "use strict";
 
-import { formatDate, normalizeApps } from "./state.js";
+import { formatDate, normalizeApps, STATUSES } from "./state.js";
+import { INPUT_LIMITS, isSafeJobUrl, toDateInput } from "./input-validation.js";
 
 // Column model for the Excel export. Keep Company/Role/Status/Source/Applied/
 // Notes names stable so exported files round-trip through the importer.
@@ -10,8 +11,8 @@ const BASE_EXPORT_COLUMNS = [
   { header: "Status", width: 12, get: (a) => a.status || "" },
   { header: "Applied", width: 14, get: (a) => (a.appliedAt ? formatDate(a.appliedAt) : "") },
   { header: "AI Reviewed", width: 12, get: (a) => (a.matchAnalysis ? "Yes" : "No") },
-  { header: "AI Fit", width: 40, get: (a) => a.matchAnalysis?.summary || "" },
-  { header: "AI Recommendation", width: 48, get: (a) => a.matchAnalysis?.overall_recommendation || "" },
+  { header: "AI Fit", width: 40, get: (a) => a.matchAnalysis ? ("schema_version" in a.matchAnalysis ? a.matchAnalysis.overall_assessment : a.matchAnalysis.summary) : "" },
+  { header: "AI Recommendation", width: 48, get: (a) => a.matchAnalysis && !("schema_version" in a.matchAnalysis) ? a.matchAnalysis.overall_recommendation : "" },
   { header: "Notes", width: 40, get: (a) => a.notes || "" },
   { header: "Job Description", width: 72, get: (a) => a.jobText || "" },
   { header: "Created", width: 14, get: (a) => (a.createdAt ? formatDate(a.createdAt) : "") },
@@ -35,7 +36,7 @@ function exportColumns(apps) {
         width: 42,
         get: (a) => {
           const url = applicationSources(a)[index]?.url || "";
-          return /^https?:\/\/\S+$/i.test(url) ? { value: url, hyperlink: url } : url;
+          return isSafeJobUrl(url) ? { value: url, hyperlink: url } : url;
         },
       },
     );
@@ -44,7 +45,9 @@ function exportColumns(apps) {
 }
 
 export function exportExcelTable(apps) {
+  if (apps.length > INPUT_LIMITS.excelRows) throw new Error("Too many applications to export at once.");
   const columns = exportColumns(apps);
+  if (columns.length > INPUT_LIMITS.excelColumns) throw new Error("Too many job sources to export at once.");
   const rows = [columns.map((c) => c.header)]
     .concat(apps.map((app) => columns.map((c) => c.get(app))));
   const blob = buildXlsx(rows, columns.map((c) => c.width));
@@ -85,7 +88,7 @@ function buildXlsx(rows, widths) {
       hyperlinks.map((link) => '<Relationship Id="' + link.id + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlEsc(link.target) + '" TargetMode="External"/>').join("") +
       "</Relationships>"
     : "";
-  const files = {
+  const files: Record<string, string> = {
     "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -181,7 +184,7 @@ function xmlEsc(value) {
   return safe.replace(/[<>&'"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[ch]));
 }
 
-function zipFiles(files) {
+function zipFiles(files: Record<string, string>) {
   const encoder = new TextEncoder();
   const chunks = [];
   const central = [];
@@ -262,6 +265,7 @@ function crc32(data) {
 // stored and deflate-compressed zip entries, and both inline and shared strings.
 export async function readExcelApplications(file) {
   try {
+    if (file.size > INPUT_LIMITS.excelBytes) throw new Error("Excel file is too large. Maximum size is 20 MB.");
     const entries = await unzip(await file.arrayBuffer());
     const dec = new TextDecoder();
     const sheetKey = Object.keys(entries).find((n) => /^xl\/worksheets\/sheet1\.xml$/i.test(n))
@@ -300,6 +304,7 @@ export async function readExcelApplications(file) {
       for (let index = 0; index < count; index++) {
         const source = cell(row, sourceColumns[index]?.index ?? -1);
         const url = cell(row, urlColumns[index]?.index ?? -1);
+        if (url && !isSafeJobUrl(url)) throw new Error("A job URL must be a valid HTTP or HTTPS address.");
         if (source || url) pairs.push({ source, url });
       }
       return pairs;
@@ -307,6 +312,16 @@ export async function readExcelApplications(file) {
     const raw = rows.slice(1)
       .filter((r) => r && r.some((v) => String(v || "").trim()))
       .map((r) => {
+        if (!cell(r, ci.company) || !cell(r, ci.role)) throw new Error("Every imported row needs a company and role.");
+        if (r.some((value) => typeof value === "string" && value.length > INPUT_LIMITS.jobText)) throw new Error("A spreadsheet cell is too long.");
+        const status = cell(r, ci.status);
+        if (status && !(STATUSES as readonly string[]).includes(status)) throw new Error("A spreadsheet row has an invalid status.");
+        if (cell(r, ci.company).length > INPUT_LIMITS.company || cell(r, ci.role).length > INPUT_LIMITS.role ||
+            cell(r, ci.notes).length > INPUT_LIMITS.notes || cell(r, ci.jobText).length > INPUT_LIMITS.jobText ||
+            sourceColumns.some(({ index }) => cell(r, index).length > INPUT_LIMITS.source) ||
+            cell(r, ci.applied) && !toDateInput(cell(r, ci.applied))) {
+          throw new Error("A spreadsheet row contains an invalid or oversized field.");
+        }
         const fit = cell(r, ci.fit);
         const recommendation = cell(r, ci.recommendation);
         const reviewed = /^(yes|true|1)$/i.test(cell(r, ci.reviewed));
@@ -314,12 +329,26 @@ export async function readExcelApplications(file) {
           id: cell(r, ci.id) || undefined,
           company: cell(r, ci.company),
           role: cell(r, ci.role),
-          status: cell(r, ci.status),
+          status: status || "Saved",
           jobSources: pairedSources(r),
-          appliedAt: cell(r, ci.applied),
+          appliedAt: toDateInput(cell(r, ci.applied)),
           notes: cell(r, ci.notes),
           jobText: cell(r, ci.jobText),
-          matchAnalysis: reviewed || recommendation || fit ? { summary: fit, overall_recommendation: recommendation } : null,
+          matchAnalysis: reviewed || recommendation || fit ? {
+            summary: fit,
+            matched_requirements: [],
+            missing_or_weak: [],
+            ats_keywords: [],
+            resume_bullets: [],
+            highlight_in_application: [],
+            overall_recommendation: recommendation,
+          } : null,
+          analysisMeta: reviewed || recommendation || fit ? {
+            schemaVersion: 1,
+            inputFingerprint: null,
+            createdAt: Date.now(),
+            source: "imported",
+          } : null,
           createdAt: cell(r, ci.created) || undefined,
           updatedAt: cell(r, ci.updated) || undefined,
         };
@@ -341,34 +370,58 @@ async function unzip(buffer) {
   }
   if (eocd === -1) throw new Error("Not a valid .xlsx (zip) file.");
   const count = view.getUint16(eocd + 10, true);
+  if (count > 200) throw new Error("The Excel file contains too many parts.");
   let ptr = view.getUint32(eocd + 16, true);
-  const out = {};
+  const out: Record<string, Uint8Array> = Object.create(null);
   const decoder = new TextDecoder();
+  let totalSize = 0;
   for (let e = 0; e < count; e++) {
-    if (view.getUint32(ptr, true) !== 0x02014b50) break;
+    if (ptr + 46 > bytes.length || view.getUint32(ptr, true) !== 0x02014b50) throw new Error("Invalid Excel archive.");
     const method = view.getUint16(ptr + 10, true);
     const compSize = view.getUint32(ptr + 20, true);
+    const size = view.getUint32(ptr + 24, true);
+    totalSize += size;
+    if (size > 30 * 1024 * 1024 || totalSize > 50 * 1024 * 1024) throw new Error("Excel file expands beyond the safe limit.");
     const nameLen = view.getUint16(ptr + 28, true);
     const extraLen = view.getUint16(ptr + 30, true);
     const commentLen = view.getUint16(ptr + 32, true);
     const localOff = view.getUint32(ptr + 42, true);
+    if (localOff + 30 > bytes.length || view.getUint32(localOff, true) !== 0x04034b50) throw new Error("Invalid Excel archive.");
     const name = decoder.decode(bytes.subarray(ptr + 46, ptr + 46 + nameLen));
+    if (Object.hasOwn(out, name)) throw new Error("Excel archive contains duplicate parts.");
     const lNameLen = view.getUint16(localOff + 26, true);
     const lExtraLen = view.getUint16(localOff + 28, true);
     const dataStart = localOff + 30 + lNameLen + lExtraLen;
+    if (dataStart + compSize > bytes.length || ptr + 46 + nameLen + extraLen + commentLen > bytes.length) throw new Error("Invalid Excel archive.");
     const comp = bytes.subarray(dataStart, dataStart + compSize);
-    out[name] = method === 0 ? comp : await inflateRaw(comp);
+    if (method !== 0 && method !== 8) throw new Error("Unsupported Excel compression.");
+    const data = method === 0 ? comp : await inflateRaw(comp, size);
+    if (data.length !== size) throw new Error("Invalid Excel archive size.");
+    out[name] = data;
     ptr += 46 + nameLen + extraLen + commentLen;
   }
   return out;
 }
 
-async function inflateRaw(bytes) {
+async function inflateRaw(bytes, maxBytes) {
   if (typeof DecompressionStream === "undefined") {
     throw new Error("This browser can't read compressed .xlsx. Use Chrome/Edge, or re-export from ApplyPilot.");
   }
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.length;
+    if (length > maxBytes) { await reader.cancel(); throw new Error("Excel file expands beyond its declared size."); }
+    chunks.push(value);
+  }
+  const output = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+  return output;
 }
 
 function xmlUnesc(s) {
@@ -393,6 +446,7 @@ function parseSharedStrings(xml) {
   const siRe = /<si>([\s\S]*?)<\/si>/g;
   let m;
   while ((m = siRe.exec(xml))) {
+    if (out.length > INPUT_LIMITS.excelRows * INPUT_LIMITS.excelColumns) throw new Error("Excel file contains too many shared strings.");
     const texts = [];
     const tRe = /<t[^>]*>([\s\S]*?)<\/t>/g;
     let t;
@@ -407,6 +461,7 @@ function parseSheetRows(xml, shared) {
   const rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g;
   let rm;
   while ((rm = rowRe.exec(xml))) {
+    if (rows.length > INPUT_LIMITS.excelRows) throw new Error("Excel file has too many rows.");
     const cells = [];
     const cellRe = /<c\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
     let cm;
@@ -416,6 +471,7 @@ function parseSheetRows(xml, shared) {
       const body = cm[2] || "";
       const refM = /r="([A-Z]+\d+)"/.exec(attrs);
       const idx = refM ? colToIndex(refM[1]) : seq;
+      if (idx >= INPUT_LIMITS.excelColumns || seq >= INPUT_LIMITS.excelColumns) throw new Error("Excel file has too many columns.");
       const typeM = /t="([^"]+)"/.exec(attrs);
       const type = typeM ? typeM[1] : "";
       let value = "";

@@ -1,0 +1,58 @@
+[
+  {
+    "text": "Strong Python and SQL skills for building scalable services.",
+    "sufficient": true
+  },
+  {
+    "text": "SQL experience required",
+    "sufficient": true
+  },
+  {
+    "text": "C programming skills are required.",
+    "sufficient": true
+  },
+  {
+    "text": "R skills required",
+    "sufficient": true
+  },
+  {
+    "text": ".NET skills required",
+    "sufficient": true
+  },
+  {
+    "text": "Bu rol için en az üç yıl SQL deneyimi zorunludur.",
+    "sufficient": true
+  },
+  {
+    "text": "SQL BİLGİSİ GEREKLİDİR",
+    "sufficient": true
+  },
+  {
+    "text": "İleri düzey Python bilgisine sahip olmak gerekmektedir.",
+    "sufficient": true
+  },
+  {
+    "text": "Python experience is preferred for this role.",
+    "sufficient": true
+  },
+  {
+    "text": "",
+    "sufficient": false
+  },
+  {
+    "text": "Engineer at Acme",
+    "sufficient": false
+  },
+  {
+    "text": "Welcome to our friendly team and office.",
+    "sufficient": false
+  },
+  {
+    "text": "must must must must must",
+    "sufficient": false
+  },
+  {
+    "text": "Required qualifications:\nPython, SQL and R skills.",
+    "sufficient": true
+  }
+]

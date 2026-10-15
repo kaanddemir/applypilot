@@ -1,0 +1,206 @@
+[
+  {
+    "name": "SQL is not NoSQL",
+    "job": "SQL experience is required for analytics services.",
+    "profile": "My work includes NoSQL experience only.",
+    "requirement": "SQL experience",
+    "expected": "unknown"
+  },
+  {
+    "name": "NoSQL is not SQL",
+    "job": "NoSQL experience is required for document databases.",
+    "profile": "My work includes SQL experience only.",
+    "requirement": "NoSQL experience",
+    "expected": "unknown"
+  },
+  {
+    "name": "Java is not JavaScript",
+    "job": "Java experience is required for backend services.",
+    "profile": "I have professional JavaScript experience.",
+    "requirement": "Java experience",
+    "expected": "unknown"
+  },
+  {
+    "name": "related analytics product",
+    "job": "Power BI expertise is required for reporting.",
+    "profile": "I have professional Tableau expertise.",
+    "requirement": "Power BI expertise",
+    "expected": "unknown"
+  },
+  {
+    "name": "English negation",
+    "job": "SQL experience is required for this role.",
+    "profile": "I have no SQL experience in my career.",
+    "requirement": "SQL experience",
+    "evidence": "SQL experience",
+    "expected": "unknown"
+  },
+  {
+    "name": "Turkish negation",
+    "job": "SQL deneyimi bu rol için gereklidir.",
+    "profile": "SQL deneyimim yok ve Python kullanıyorum.",
+    "requirement": "SQL experience",
+    "evidence": "SQL deneyimim",
+    "expected": "unknown"
+  },
+  {
+    "name": "English never",
+    "job": "Python experience is required for this role.",
+    "profile": "I have never used Python in production.",
+    "requirement": "Python experience",
+    "evidence": "Python",
+    "expected": "unknown"
+  },
+  {
+    "name": "Turkish never",
+    "job": "Python deneyimi bu pozisyon için gereklidir.",
+    "profile": "Python kullanmadım ve yalnızca SQL biliyorum.",
+    "requirement": "Python experience",
+    "evidence": "Python",
+    "expected": "unknown"
+  },
+  {
+    "name": "duration lower English",
+    "job": "At least five years of Python experience is required.",
+    "profile": "I have two years of Python experience.",
+    "requirement": "Five years of Python experience",
+    "expected": "partial"
+  },
+  {
+    "name": "duration lower Turkish",
+    "job": "En az beş yıl Python deneyimi gereklidir.",
+    "profile": "Python ile iki yıl deneyim kazandım.",
+    "requirement": "Five years of Python experience",
+    "expected": "partial"
+  },
+  {
+    "name": "duration missing",
+    "job": "At least five years of Python experience is required.",
+    "profile": "I have professional Python experience.",
+    "requirement": "Five years of Python experience",
+    "expected": "partial"
+  },
+  {
+    "name": "duration meets mixed language",
+    "job": "En az üç yıl SQL deneyimi gereklidir.",
+    "profile": "I have four years of SQL experience.",
+    "requirement": "Three years of SQL experience",
+    "expected": "verified"
+  },
+  {
+    "name": "proficiency basic English",
+    "job": "Advanced Python proficiency is required for this role.",
+    "profile": "I have basic Python exposure from a course.",
+    "requirement": "Advanced Python proficiency",
+    "expected": "partial"
+  },
+  {
+    "name": "proficiency basic Turkish",
+    "job": "İleri düzey Python bilgisi gereklidir.",
+    "profile": "Python konusunda temel bilgiye sahibim.",
+    "requirement": "Advanced Python proficiency",
+    "expected": "partial"
+  },
+  {
+    "name": "language level",
+    "job": "Fluent English at C1 level is required.",
+    "profile": "My documented English proficiency is B2 level.",
+    "requirement": "English at C1 level",
+    "category": "language",
+    "expected": "partial"
+  },
+  {
+    "name": "explicit language contradiction",
+    "job": "Fluent English at C1 level is required.",
+    "profile": "My documented English proficiency is B2 level.",
+    "requirement": "English at C1 level",
+    "category": "language",
+    "status": "contradicted",
+    "expected": "contradicted"
+  },
+  {
+    "name": "unsupported contradiction",
+    "job": "SQL experience is required for this role.",
+    "profile": "I have professional SQL experience.",
+    "requirement": "SQL experience",
+    "status": "contradicted",
+    "expected": "unknown"
+  },
+  {
+    "name": "certification aspiration",
+    "job": "Active CISSP certification is required for this role.",
+    "profile": "I am studying for CISSP certification.",
+    "requirement": "Active CISSP certification",
+    "category": "certification",
+    "expected": "partial"
+  },
+  {
+    "name": "certification inactive",
+    "job": "Active CISSP certification is required for this role.",
+    "profile": "My CISSP certification has expired.",
+    "requirement": "Active CISSP certification",
+    "category": "certification",
+    "expected": "partial"
+  },
+  {
+    "name": "wrong certification",
+    "job": "Active CISSP certification is required for this role.",
+    "profile": "I hold an active PMP certification.",
+    "requirement": "Active CISSP certification",
+    "category": "certification",
+    "expected": "unknown"
+  },
+  {
+    "name": "education level",
+    "job": "A master degree in mathematics is required.",
+    "profile": "I hold a bachelor degree in mathematics.",
+    "requirement": "Master degree in mathematics",
+    "category": "education",
+    "expected": "partial"
+  },
+  {
+    "name": "education discipline",
+    "job": "A bachelor degree in computer science is required.",
+    "profile": "I hold a bachelor degree in mathematics.",
+    "requirement": "Bachelor degree in computer science",
+    "category": "education",
+    "expected": "unknown"
+  },
+  {
+    "name": "education studying",
+    "job": "A bachelor degree in computer science is required.",
+    "profile": "I am pursuing a bachelor degree in computer science.",
+    "requirement": "Bachelor degree in computer science",
+    "category": "education",
+    "expected": "partial"
+  },
+  {
+    "name": "valid cross language proficiency",
+    "job": "Advanced Python proficiency is required for this role.",
+    "profile": "İleri düzey Python deneyimine sahibim.",
+    "requirement": "Advanced Python proficiency",
+    "expected": "verified"
+  },
+  {
+    "name": "alias equivalence",
+    "job": "JavaScript experience is required for this role.",
+    "profile": "I have professional JS and ECMAScript experience.",
+    "requirement": "JavaScript experience",
+    "expected": "verified"
+  },
+  {
+    "name": "proficiency unspecified",
+    "job": "Advanced Python proficiency is required for this role.",
+    "profile": "Python used in several work projects.",
+    "requirement": "Advanced Python proficiency",
+    "expected": "partial"
+  },
+  {
+    "name": "education unrelated quote",
+    "job": "A university degree is required for this role.",
+    "profile": "I work professionally as an engineer.",
+    "requirement": "University degree",
+    "category": "education",
+    "expected": "unknown"
+  }
+]

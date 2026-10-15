@@ -23,8 +23,8 @@ URL.createObjectURL = (blob) => {
 };
 URL.revokeObjectURL = () => {};
 
-const { exportExcelTable, readExcelApplications } = await import("../frontend/js/excel.js");
-const { normalizeApps } = await import("../frontend/js/state.js");
+const { exportExcelTable, readExcelApplications } = await import("../frontend/.test-dist/excel.js");
+const { normalizeApps } = await import("../frontend/.test-dist/state.js");
 
 function makeWorkbook(apps) {
   exportedBlob = null;
@@ -88,13 +88,44 @@ test("job descriptions survive Excel export and import", async () => {
   assert.equal(imported[0].jobText, expectedJobText);
   assert.deepEqual(imported[0].matchAnalysis, {
     summary: "Strong fit for the core requirements",
+    matched_requirements: [],
+    missing_or_weak: [],
+    ats_keywords: [],
+    resume_bullets: [],
+    highlight_in_application: [],
     overall_recommendation: "Proceed with a tailored application",
   });
+  assert.equal(imported[0].analysisMeta.source, "imported");
+  assert.equal(imported[0].analysisMeta.inputFingerprint, null);
   assert.deepEqual(imported[0].jobSources, [
     { source: "LinkedIn", url: "https://example.com/jobs/1" },
     { source: "Company Site", url: "https://example.com/careers/1" },
   ]);
   assert.equal(imported[1].jobText, "");
+});
+
+test("malformed workbooks fail without producing partial applications", async () => {
+  await assert.rejects(
+    () => readExcelApplications(new Blob(["not an xlsx"])),
+    /valid \.xlsx|Could not read/,
+  );
+});
+
+test("structured assessments do not export legacy coaching text", async () => {
+  const workbook = makeWorkbook([{
+    id: "AP-ABCD-1234", company: "Assessment Co", role: "Engineer", status: "Saved",
+    jobSources: [], appliedAt: "", notes: "", jobText: "TypeScript is required.",
+    matchAnalysis: {
+      schema_version: 2,
+      input_assessment: { status: "limited", explanation: "Legacy structured analysis" },
+      overall_assessment: "One requirement was assessed.", requirements: [], eligibility_conditions: [],
+      improvements: [{ action: "Rewrite the entire CV", reason: "Legacy coaching", related_requirement_ids: [] }],
+    },
+    createdAt: 1, updatedAt: 1,
+  }]);
+  const workbookText = new TextDecoder().decode(await workbook.arrayBuffer());
+  assert.match(workbookText, /One requirement was assessed/);
+  assert.doesNotMatch(workbookText, /Rewrite the entire CV|Legacy coaching/);
 });
 
 test("application normalization emits only the current schema", () => {
@@ -119,4 +150,35 @@ test("application normalization emits only the current schema", () => {
   for (const removed of ["jobUrl", "jobUrls", "source", "sources", "nextAction"]) {
     assert.equal(Object.hasOwn(app, removed), false, `${removed} should not be emitted`);
   }
+});
+
+test("exported spreadsheet cells remain literal text and unsafe links are inactive", async () => {
+  const workbook = makeWorkbook([{
+    id: "AP-1234-5678", company: '=HYPERLINK("https://attacker.invalid","Click")',
+    role: "<script>alert(1)</script>", status: "Saved", appliedAt: "", notes: "+SUM(1,2)",
+    jobText: "İstanbul — Python & SQL", jobSources: [{ source: "Imported", url: "javascript:alert(1)" }],
+  }]);
+  const raw = new TextDecoder().decode(await workbook.arrayBuffer());
+  assert.match(raw, /<t xml:space="preserve">=HYPERLINK/);
+  assert.match(raw, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(raw, /<f>|Target="javascript:/);
+  await assert.rejects(() => readExcelApplications(workbook), /valid HTTP or HTTPS/);
+});
+
+test("large imports fail before parsing and invalid rows do not partially import", async () => {
+  await assert.rejects(
+    () => readExcelApplications({ size: 21 * 1024 * 1024, arrayBuffer() { throw new Error("must not read"); } }),
+    /too large/,
+  );
+  const workbook = makeWorkbook([{ company: "Acme", role: "Engineer", status: "Invalid", jobSources: [] }]);
+  await assert.rejects(() => readExcelApplications(workbook), /invalid status/);
+  const missingRole = makeWorkbook([{ company: "Acme", role: "  ", status: "Saved", jobSources: [] }]);
+  await assert.rejects(() => readExcelApplications(missingRole), /company and role/);
+});
+
+test("international job URLs survive spreadsheet round trip", async () => {
+  const url = "https://iş.example/ilan/çözüm-mimarı";
+  const workbook = makeWorkbook([{ company: "Örnek Şirket", role: "Çözüm Mimarı", status: "Saved", jobSources: [{ source: "Kariyer", url }] }]);
+  const imported = await readExcelApplications(workbook);
+  assert.equal(imported[0].jobSources[0].url, url);
 });
